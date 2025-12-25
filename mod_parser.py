@@ -941,6 +941,7 @@ class ModUpdateChecker:
         """
         import urllib.request
         import urllib.parse
+        import urllib.error
         
         if not workshop_ids:
             return {}
@@ -985,8 +986,14 @@ class ModUpdateChecker:
                             'preview_url': item.get('preview_url', ''),
                             'creator': item.get('creator', ''),
                         }
-        except Exception as e:
-            print(f"Failed to fetch Workshop info: {e}")
+        except urllib.error.URLError as e:
+            print(f"Network error fetching Workshop info: {e}")
+        except urllib.error.HTTPError as e:
+            print(f"HTTP error fetching Workshop info: {e.code}")
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"Failed to parse Workshop response: {e}")
+        except OSError as e:
+            print(f"OS error fetching Workshop info: {e}")
         
         return results
     
@@ -1095,6 +1102,7 @@ class EnhancedModInfoFetcher:
         """Fetch enhanced info for multiple mods."""
         import urllib.request
         import urllib.parse
+        import urllib.error
         
         if not workshop_ids:
             return {}
@@ -1139,8 +1147,14 @@ class EnhancedModInfoFetcher:
                                 preview_url=item.get('preview_url', ''),
                             )
                             self.cache[wid] = info
-            except Exception as e:
-                print(f"Failed to fetch enhanced mod info: {e}")
+            except urllib.error.URLError as e:
+                print(f"Network error fetching enhanced mod info: {e}")
+            except urllib.error.HTTPError as e:
+                print(f"HTTP error fetching enhanced mod info: {e.code}")
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                print(f"Failed to parse enhanced mod info response: {e}")
+            except OSError as e:
+                print(f"OS error fetching enhanced mod info: {e}")
         
         # Return requested items from cache
         return {wid: self.cache[wid] for wid in workshop_ids if wid in self.cache}
