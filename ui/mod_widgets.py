@@ -377,10 +377,15 @@ class DraggableModList(QListWidget):
 class ModDetailsPanel(QFrame):
     """Panel showing details of a selected mod."""
     
+    # Signals
+    uninstall_requested = pyqtSignal(object)  # ModInfo
+    open_folder_requested = pyqtSignal(object)  # ModInfo
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Raised)
         self.setMinimumWidth(250)
+        self._current_mod: Optional[ModInfo] = None
         
         self._setup_ui()
         self.clear()
@@ -446,9 +451,37 @@ class ModDetailsPanel(QFrame):
         self.path_label.setWordWrap(True)
         self.path_label.setStyleSheet("color: #666; font-size: 10px;")
         layout.addWidget(self.path_label)
+        
+        # Action buttons
+        btn_layout = QHBoxLayout()
+        
+        self.btn_open_folder = QPushButton("📁 Open Folder")
+        self.btn_open_folder.setToolTip("Open mod folder in file manager")
+        self.btn_open_folder.clicked.connect(self._on_open_folder)
+        btn_layout.addWidget(self.btn_open_folder)
+        
+        self.btn_uninstall = QPushButton("🗑️ Uninstall")
+        self.btn_uninstall.setToolTip("Delete this mod permanently")
+        self.btn_uninstall.setStyleSheet("background-color: #5a2a2a;")
+        self.btn_uninstall.clicked.connect(self._on_uninstall)
+        btn_layout.addWidget(self.btn_uninstall)
+        
+        layout.addLayout(btn_layout)
+    
+    def _on_open_folder(self):
+        """Handle open folder button click."""
+        if self._current_mod:
+            self.open_folder_requested.emit(self._current_mod)
+    
+    def _on_uninstall(self):
+        """Handle uninstall button click."""
+        if self._current_mod:
+            self.uninstall_requested.emit(self._current_mod)
     
     def show_mod(self, mod: ModInfo) -> None:
         """Display details for a mod."""
+        self._current_mod = mod
+        
         # Preview image
         preview = mod.get_preview_image()
         if preview and preview.exists():
@@ -523,9 +556,22 @@ class ModDetailsPanel(QFrame):
             self.path_label.show()
         else:
             self.path_label.hide()
+        
+        # Enable/disable uninstall button based on mod source
+        # Don't allow uninstalling core game mods
+        if mod.source == ModSource.GAME:
+            self.btn_uninstall.setEnabled(False)
+            self.btn_uninstall.setToolTip("Cannot uninstall core game files")
+        else:
+            self.btn_uninstall.setEnabled(True)
+            self.btn_uninstall.setToolTip("Delete this mod permanently")
+        
+        # Enable open folder button if path exists
+        self.btn_open_folder.setEnabled(mod.path is not None and mod.path.exists())
     
     def clear(self) -> None:
         """Clear the details panel."""
+        self._current_mod = None
         self.preview_label.setText("Select a mod")
         self.preview_label.setPixmap(QPixmap())
         self.name_label.clear()
@@ -536,6 +582,8 @@ class ModDetailsPanel(QFrame):
         self.description_label.clear()
         self.deps_label.clear()
         self.path_label.clear()
+        self.btn_open_folder.setEnabled(False)
+        self.btn_uninstall.setEnabled(False)
 
 
 class ModListControls(QWidget):
