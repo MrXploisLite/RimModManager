@@ -261,6 +261,10 @@ class WorkshopBrowser(QWidget):
         # Queue controls
         queue_controls = QHBoxLayout()
         
+        self.btn_select_all = QPushButton("Select All")
+        self.btn_select_all.clicked.connect(self._select_all_queue)
+        queue_controls.addWidget(self.btn_select_all)
+        
         self.btn_remove = QPushButton("🗑️ Remove")
         self.btn_remove.clicked.connect(self._remove_selected)
         queue_controls.addWidget(self.btn_remove)
@@ -553,6 +557,7 @@ class WorkshopBrowser(QWidget):
             return
         
         self.status_label.setText("Parsing collection...")
+        QApplication.processEvents()
         
         try:
             import urllib.request
@@ -574,18 +579,29 @@ class WorkshopBrowser(QWidget):
             seen = set()
             unique_ids = []
             for mid in matches:
-                if mid not in seen:
-                    seen.add(mid)
-                    unique_ids.append(mid)
+                if mid not in seen and mid not in self.queue_ids:
+                    # Skip already downloaded if checkbox is checked
+                    if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
+                        seen.add(mid)
+                        unique_ids.append(mid)
             
-            if unique_ids:
-                added = 0
-                for wid in unique_ids:
-                    if self._add_to_queue(wid):
-                        added += 1
-                self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} total)")
-            else:
-                self.status_label.setText("No mods found in collection")
+            if not unique_ids:
+                self.status_label.setText("No new mods found in collection")
+                return
+            
+            self.status_label.setText(f"Fetching names for {len(unique_ids)} mods...")
+            QApplication.processEvents()
+            
+            # Batch fetch mod names (much faster than one-by-one)
+            mod_names = self._fetch_mod_names_batch(unique_ids)
+            
+            added = 0
+            for wid in unique_ids:
+                name = mod_names.get(wid, f"Workshop Mod {wid}")
+                if self._add_to_queue_direct(wid, name):
+                    added += 1
+            
+            self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
                 
         except urllib.error.URLError as e:
             self.status_label.setText(f"Network error: {e.reason}")
@@ -594,16 +610,36 @@ class WorkshopBrowser(QWidget):
         except (OSError, ValueError) as e:
             self.status_label.setText(f"Failed to parse collection: {e}")
     
+    def _select_all_queue(self):
+        """Select all items in the queue."""
+        self.queue_list.selectAll()
+        count = len(self.queue_list.selectedItems())
+        self.status_label.setText(f"Selected {count} item(s)")
+    
     def _remove_selected(self):
         """Remove selected items from queue (thread-safe)."""
         with self._queue_lock:
-            for item in self.queue_list.selectedItems():
+            selected = self.queue_list.selectedItems()
+            if not selected:
+                self.status_label.setText("No items selected")
+                return
+            
+            # Get rows in reverse order to avoid index shifting
+            rows_to_remove = sorted(
+                [self.queue_list.row(item) for item in selected],
+                reverse=True
+            )
+            
+            for row in rows_to_remove:
+                item = self.queue_list.item(row)
                 if isinstance(item, DownloadQueueItem):
-                    self.queue_ids.discard(item.workshop_item.workshop_id)
-                    self.queue = [q for q in self.queue if q.workshop_id != item.workshop_item.workshop_id]
-                self.queue_list.takeItem(self.queue_list.row(item))
+                    wid = item.workshop_item.workshop_id
+                    self.queue_ids.discard(wid)
+                    self.queue = [q for q in self.queue if q.workshop_id != wid]
+                self.queue_list.takeItem(row)
             
             self._update_queue_count()
+            self.status_label.setText(f"Removed {len(rows_to_remove)} item(s)")
     
     def _clear_queue(self):
         """Clear the entire queue (thread-safe)."""
