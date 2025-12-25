@@ -755,15 +755,14 @@ class ModsConfigParser:
         mods_config = config_path / "ModsConfig.xml"
         backup_path = config_path / "ModsConfig.xml.backup"
         
-        # Try to preserve existing data - check main file first, then backup
+        # Try to preserve version only - expansions always use clean defaults
         existing_version = ""
-        existing_expansions = []
         
         if preserve_existing:
             # Try main file first
             if mods_config.exists():
                 try:
-                    _, existing_version, existing_expansions = self.parse_mods_config(config_path)
+                    _, existing_version, _ = self.parse_mods_config(config_path)
                 except Exception:
                     pass
             
@@ -783,6 +782,7 @@ class ModsConfigParser:
         final_version = game_version or existing_version
         
         # Default expansions with correct PascalCase (RimWorld expects this exact casing)
+        # ALWAYS use these clean defaults - never preserve from potentially corrupt file
         default_expansions = [
             "Ludeon.RimWorld",
             "Ludeon.RimWorld.Royalty", 
@@ -792,25 +792,11 @@ class ModsConfigParser:
             "Ludeon.RimWorld.Odyssey"
         ]
         
-        # Deduplicate expansions (case-insensitive) and normalize to PascalCase
         # Create a mapping of lowercase -> PascalCase for known expansions
         expansion_map = {exp.lower(): exp for exp in default_expansions}
         
-        # Deduplicate existing expansions
-        seen_expansions = set()
-        final_expansions = []
-        for exp in (existing_expansions or default_expansions):
-            exp_lower = exp.lower()
-            if exp_lower not in seen_expansions:
-                seen_expansions.add(exp_lower)
-                # Use PascalCase version if known, otherwise keep original
-                final_expansions.append(expansion_map.get(exp_lower, exp))
-        
-        # Ensure all default expansions are included
-        for exp in default_expansions:
-            if exp.lower() not in seen_expansions:
-                final_expansions.append(exp)
-                seen_expansions.add(exp.lower())
+        # Always use clean default expansions
+        final_expansions = default_expansions.copy()
         
         # Deduplicate active_mods (case-insensitive, preserve order and original casing)
         # But normalize Core/DLC to PascalCase
