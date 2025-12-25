@@ -1,8 +1,6 @@
-# RimModManager
+# I want to talk about why there are so many commits, because there are a lot of trials and sometimes things get stuck.
 
 <div align="center">
-
-![RimModManager Logo](https://img.shields.io/badge/🎮-RimModManager-blue?style=for-the-badge)
 
 **The Ultimate Cross-Platform Mod Manager for RimWorld**
 
