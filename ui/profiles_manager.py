@@ -56,7 +56,7 @@ class BackupListItem(QListWidgetItem):
         try:
             dt = datetime.strptime(self.backup.timestamp, "%Y%m%d_%H%M%S")
             time_str = dt.strftime("%Y-%m-%d %H:%M")
-        except:
+        except (ValueError, TypeError):
             time_str = self.backup.timestamp
         
         self.setText(f"{icon} {self.backup.name} - {time_str} ({mod_count} mods)")

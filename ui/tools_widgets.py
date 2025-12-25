@@ -3,18 +3,16 @@ Tools Widgets for RimModManager
 Update checker, conflict resolver, and enhanced mod info UI.
 """
 
-from pathlib import Path
-from typing import Optional, Callable, List
-from datetime import datetime
+from typing import Optional, Callable
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QDialog, QDialogButtonBox,
-    QTextEdit, QGroupBox, QMessageBox, QProgressBar,
-    QTabWidget, QFrame, QSplitter, QScrollArea, QApplication
+    QListWidget, QListWidgetItem, QTextEdit, QGroupBox, 
+    QMessageBox, QProgressBar, QTabWidget, QFrame, 
+    QScrollArea, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QColor
 
 from mod_parser import (
     ModInfo, ModUpdateChecker, ModUpdateInfo,
