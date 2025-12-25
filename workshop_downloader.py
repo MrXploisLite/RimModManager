@@ -457,115 +457,154 @@ After installation, restart this application.
 
 class ModInstaller:
     """
-    Handles installing/activating mods via symlinks.
+    Handles installing/activating mods via symlinks or copy (for Proton/Wine).
     """
     
-    def __init__(self, game_mods_path: Path):
+    def __init__(self, game_mods_path: Path, use_copy: bool = False):
         self.game_mods_path = game_mods_path
+        self.use_copy = use_copy  # Use copy instead of symlink (for Proton/Wine)
     
-    def clear_symlinks(self) -> int:
+    def clear_installed_mods(self) -> int:
         """
-        Remove all symbolic links from the game's Mods folder.
-        Returns the number of links removed.
+        Remove all symbolic links and copied mods from the game's Mods folder.
+        Returns the number of items removed.
         """
+        import shutil
         removed = 0
         
         if not self.game_mods_path.exists():
             return 0
         
         for item in self.game_mods_path.iterdir():
-            if item.is_symlink():
-                try:
+            # Skip non-mod files
+            if item.name.endswith('.txt'):
+                continue
+            
+            try:
+                if item.is_symlink():
                     item.unlink()
                     removed += 1
-                except (OSError, PermissionError) as e:
-                    print(f"Failed to remove symlink {item}: {e}")
+                elif item.is_dir() and self.use_copy:
+                    # In copy mode, remove copied mod folders
+                    # Check if it looks like a mod (has About folder or About.xml)
+                    if (item / "About").exists() or (item / "About.xml").exists():
+                        shutil.rmtree(item)
+                        removed += 1
+            except (OSError, PermissionError) as e:
+                print(f"Failed to remove {item}: {e}")
         
         return removed
     
-    def create_symlink(self, source_path: Path, link_name: str = None) -> bool:
+    def clear_symlinks(self) -> int:
+        """Alias for backward compatibility."""
+        return self.clear_installed_mods()
+    
+    def install_mod(self, source_path: Path, link_name: str = None) -> bool:
         """
-        Create a symbolic link in the game's Mods folder.
-        On Windows, falls back to directory junction if symlink fails.
+        Install a mod - either by symlink or copy depending on mode.
         Returns True if successful.
         """
-        import platform
+        import shutil
         
         if not source_path.exists():
             return False
         
         link_name = link_name or source_path.name
-        link_path = self.game_mods_path / link_name
+        dest_path = self.game_mods_path / link_name
         
-        # Remove existing link/folder with same name
-        if link_path.exists() or link_path.is_symlink():
-            if link_path.is_symlink():
-                link_path.unlink()
-            else:
-                # Don't remove actual folders
+        # Remove existing
+        if dest_path.exists() or dest_path.is_symlink():
+            try:
+                if dest_path.is_symlink():
+                    dest_path.unlink()
+                elif dest_path.is_dir():
+                    shutil.rmtree(dest_path)
+                else:
+                    dest_path.unlink()
+            except (OSError, PermissionError):
                 return False
+        
+        if self.use_copy:
+            # Copy mode - for Proton/Wine compatibility
+            try:
+                shutil.copytree(source_path, dest_path)
+                return True
+            except (OSError, PermissionError, shutil.Error) as e:
+                print(f"Failed to copy mod: {e}")
+                return False
+        else:
+            # Symlink mode
+            return self._create_symlink(source_path, dest_path)
+    
+    def _create_symlink(self, source_path: Path, link_path: Path) -> bool:
+        """Create a symbolic link. Falls back to junction on Windows."""
+        import platform
         
         try:
             link_path.symlink_to(source_path)
             return True
         except (OSError, PermissionError) as e:
-            # On Windows, symlinks require admin or Developer Mode
-            # Fall back to directory junction (mklink /J) which doesn't require elevation
+            # On Windows, fall back to directory junction
             if platform.system().lower() == 'windows':
                 try:
                     import subprocess
-                    # Use mklink /J for directory junction (no admin required)
                     result = subprocess.run(
                         ['cmd', '/c', 'mklink', '/J', str(link_path), str(source_path)],
-                        capture_output=True,
-                        text=True
+                        capture_output=True, text=True
                     )
                     if result.returncode == 0:
                         return True
-                    print(f"Failed to create junction: {result.stderr}")
-                except (subprocess.SubprocessError, FileNotFoundError, OSError) as je:
-                    print(f"Failed to create junction: {je}")
+                except Exception:
+                    pass
             
             print(f"Failed to create symlink: {e}")
             return False
     
+    def create_symlink(self, source_path: Path, link_name: str = None) -> bool:
+        """Alias for install_mod - backward compatibility."""
+        return self.install_mod(source_path, link_name)
+    
     def install_mods(self, mod_paths: list[Path], clear_existing: bool = True) -> dict[Path, bool]:
         """
-        Install multiple mods by creating symlinks.
+        Install multiple mods.
         Returns dict of path -> success status.
         """
         results = {}
         
-        # Ensure mods folder exists
         self.game_mods_path.mkdir(parents=True, exist_ok=True)
         
-        # Clear existing symlinks if requested
         if clear_existing:
-            self.clear_symlinks()
+            self.clear_installed_mods()
         
         for mod_path in mod_paths:
-            results[mod_path] = self.create_symlink(mod_path)
+            results[mod_path] = self.install_mod(mod_path)
         
         return results
     
     def get_installed_mods(self) -> list[Path]:
-        """Get list of currently installed (symlinked) mods."""
+        """Get list of currently installed mods (symlinked or copied)."""
         mods = []
         
         if not self.game_mods_path.exists():
             return mods
         
         for item in self.game_mods_path.iterdir():
+            if item.name.endswith('.txt'):
+                continue
+            
             if item.is_symlink():
-                # Get the actual target
                 target = item.resolve()
                 if target.exists():
                     mods.append(target)
+            elif item.is_dir() and self.use_copy:
+                # In copy mode, the mod IS in the folder
+                if (item / "About").exists() or (item / "About.xml").exists():
+                    mods.append(item)
         
         return mods
     
     def get_symlink_targets(self) -> dict[str, Path]:
-        """Get mapping of symlink names to their targets."""
+        """Get mapping of mod names to their source paths."""
         targets = {}
         
         if not self.game_mods_path.exists():

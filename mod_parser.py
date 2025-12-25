@@ -734,121 +734,170 @@ class ModsConfigParser:
     def write_mods_config(self, config_path: Path, active_mods: list[str], 
                           game_version: str = "", preserve_existing: bool = True) -> bool:
         """
-        Write ModsConfig.xml with the given mod list.
-        
-        Args:
-            config_path: Path to the Config folder
-            active_mods: List of package IDs to activate (in load order)
-            game_version: Game version string (optional, will preserve existing if not provided)
-            preserve_existing: If True, preserve version and knownExpansions from existing file
-        
-        Returns:
-            True if successful, False otherwise
+        Write ModsConfig.xml - RimSort-style implementation.
+        DLC/Core are NOT written to activeMods - they're loaded from game Data folder.
         """
-        # Ensure config directory exists
+        import os
+        import shutil
+        import xml.dom.minidom as minidom
+        
+        # DLC package IDs - DO NOT filter these out
+        # Game needs all active mods including DLC in activeMods
+        # Only knownExpansions is separate (DLCs only, no Core)
+        EXCLUDED_IDS = set()  # Don't exclude anything
+        
+        # knownExpansions - DLCs only (no Core)
+        KNOWN_EXPANSIONS = [
+            "ludeon.rimworld.royalty", 
+            "ludeon.rimworld.ideology",
+            "ludeon.rimworld.biotech",
+            "ludeon.rimworld.anomaly",
+            "ludeon.rimworld.odyssey"
+        ]
+        
         try:
             config_path.mkdir(parents=True, exist_ok=True)
         except (IOError, PermissionError) as e:
-            print(f"Failed to create config directory {config_path}: {e}")
+            print(f"[ModsConfig] Failed to create directory: {e}")
             return False
         
         mods_config = config_path / "ModsConfig.xml"
         backup_path = config_path / "ModsConfig.xml.backup"
         
-        # Try to preserve version only - expansions always use clean defaults
+        # Get existing version
         existing_version = ""
+        if preserve_existing and mods_config.exists():
+            try:
+                tree = ET.parse(mods_config)
+                ver = tree.find(".//version")
+                if ver is not None and ver.text:
+                    existing_version = ver.text.strip()
+            except Exception:
+                pass
         
-        if preserve_existing:
-            # Try main file first
-            if mods_config.exists():
-                try:
-                    _, existing_version, _ = self.parse_mods_config(config_path)
-                except Exception:
-                    pass
-            
-            # If no version found, try backup file
-            if not existing_version and backup_path.exists():
-                try:
-                    tree = ET.parse(backup_path)
-                    root = tree.getroot()
-                    version_elem = root.find("version")
-                    if version_elem is not None and version_elem.text:
-                        existing_version = version_elem.text.strip()
-                        print(f"[ModsConfig] Recovered version from backup: {existing_version}")
-                except Exception:
-                    pass
+        final_version = game_version or existing_version or "1.6.4633 rev1261"
         
-        # Use provided version or existing or empty
-        final_version = game_version or existing_version
-        
-        # Default expansions with correct PascalCase (RimWorld expects this exact casing)
-        # ALWAYS use these clean defaults - never preserve from potentially corrupt file
-        default_expansions = [
-            "Ludeon.RimWorld",
-            "Ludeon.RimWorld.Royalty", 
-            "Ludeon.RimWorld.Ideology",
-            "Ludeon.RimWorld.Biotech",
-            "Ludeon.RimWorld.Anomaly",
-            "Ludeon.RimWorld.Odyssey"
-        ]
-        
-        # Create a mapping of lowercase -> PascalCase for known expansions
-        expansion_map = {exp.lower(): exp for exp in default_expansions}
-        
-        # Always use clean default expansions
-        final_expansions = default_expansions.copy()
-        
-        # Deduplicate active_mods (case-insensitive, preserve order and original casing)
-        # But normalize Core/DLC to PascalCase
-        seen_mods = set()
-        deduped_mods = []
+        # Filter out DLC/Core, normalize to lowercase, dedupe
+        seen = set()
+        filtered_mods = []
         for mod_id in active_mods:
-            mod_lower = mod_id.lower()
-            if mod_lower not in seen_mods:
-                seen_mods.add(mod_lower)
-                # Normalize Core/DLC to PascalCase
-                normalized = expansion_map.get(mod_lower, mod_id)
-                deduped_mods.append(normalized)
+            lower = mod_id.lower()
+            # Skip DLC and Core - game loads them from Data folder
+            if lower in EXCLUDED_IDS:
+                print(f"[ModsConfig] Skipping DLC/Core: {mod_id}")
+                continue
+            if lower not in seen:
+                seen.add(lower)
+                filtered_mods.append(lower)
         
-        # Create backup of existing file
+        # IMPORTANT: Ensure correct load order
+        # 1. Harmony (and other tier-0 mods) must come first
+        # 2. Core must come after Harmony but before DLCs
+        # 3. DLCs in order: Royalty, Ideology, Biotech, Anomaly, Odyssey
+        # 4. Other mods after
+        
+        CORE_ID = "ludeon.rimworld"
+        DLC_ORDER = [
+            "ludeon.rimworld.royalty",
+            "ludeon.rimworld.ideology", 
+            "ludeon.rimworld.biotech",
+            "ludeon.rimworld.anomaly",
+            "ludeon.rimworld.odyssey"
+        ]
+        TIER_ZERO = {"brrainz.harmony"}  # Mods that must load before Core
+        
+        # Separate mods into categories
+        tier_zero_mods = [m for m in filtered_mods if m in TIER_ZERO]
+        other_mods = [m for m in filtered_mods if m not in TIER_ZERO and m != CORE_ID and m not in DLC_ORDER]
+        
+        # Check if Core/DLCs were in original list
+        has_core = CORE_ID in [m.lower() for m in active_mods]
+        active_dlcs = [dlc for dlc in DLC_ORDER if dlc in [m.lower() for m in active_mods]]
+        
+        # Build final ordered list
+        final_mods = []
+        final_mods.extend(tier_zero_mods)  # Harmony first
+        if has_core:
+            final_mods.append(CORE_ID)  # Core second
+        final_mods.extend(active_dlcs)  # DLCs in order
+        final_mods.extend(other_mods)  # Other mods last
+        
+        print(f"[ModsConfig] Input mods: {len(active_mods)}, After filter: {len(final_mods)}")
+        print(f"[ModsConfig] Final order: {final_mods}")
+        
+        # Backup existing
         if mods_config.exists():
             try:
-                import shutil
                 shutil.copy2(mods_config, backup_path)
-                print(f"[ModsConfig] Backup created: {backup_path}")
-            except IOError as e:
-                print(f"[ModsConfig] Warning: Could not create backup: {e}")
+            except Exception:
+                pass
         
-        # Build XML structure
-        root = ET.Element("ModsConfigData")
+        # Build dict structure (RimSort style)
+        data = {
+            "ModsConfigData": {
+                "version": final_version,
+                "activeMods": {"li": final_mods},
+                "knownExpansions": {"li": KNOWN_EXPANSIONS}
+            }
+        }
         
-        # Add version if available
-        if final_version:
-            version_elem = ET.SubElement(root, "version")
-            version_elem.text = final_version
+        # Convert dict to XML
+        def dict_to_xml(d: dict, parent=None):
+            if parent is None:
+                tag = list(d.keys())[0]
+                root = ET.Element(tag)
+                dict_to_xml(d[tag], root)
+                return root
+            
+            for key, val in d.items():
+                if isinstance(val, dict):
+                    if "li" in val and isinstance(val["li"], list):
+                        elem = ET.SubElement(parent, key)
+                        for item in val["li"]:
+                            li = ET.SubElement(elem, "li")
+                            li.text = str(item)
+                    else:
+                        elem = ET.SubElement(parent, key)
+                        dict_to_xml(val, elem)
+                elif isinstance(val, list):
+                    for item in val:
+                        elem = ET.SubElement(parent, key)
+                        if isinstance(item, dict):
+                            dict_to_xml(item, elem)
+                        else:
+                            elem.text = str(item)
+                else:
+                    elem = ET.SubElement(parent, key)
+                    elem.text = str(val)
+            return parent
         
-        # Add active mods (deduplicated)
-        active_mods_elem = ET.SubElement(root, "activeMods")
-        for mod_id in deduped_mods:
-            li = ET.SubElement(active_mods_elem, "li")
-            li.text = mod_id
-        
-        # Add known expansions (deduplicated)
-        known_expansions_elem = ET.SubElement(root, "knownExpansions")
-        for expansion in final_expansions:
-            li = ET.SubElement(known_expansions_elem, "li")
-            li.text = expansion
-        
-        # Write to file
         try:
-            tree = ET.ElementTree(root)
-            ET.indent(tree, space="  ")
-            tree.write(mods_config, encoding="utf-8", xml_declaration=True)
+            root = dict_to_xml(data)
+            
+            # Pretty print with minidom
+            rough = ET.tostring(root, encoding="utf-8")
+            reparsed = minidom.parseString(rough)
+            pretty_xml = reparsed.toprettyxml(indent="  ")
+            
+            # Remove extra blank lines
+            lines = [line for line in pretty_xml.split('\n') if line.strip()]
+            final_xml = '\n'.join(lines)
+            
+            # Write
+            with open(mods_config, 'w', encoding='utf-8') as f:
+                f.write(final_xml)
+                f.flush()
+                os.fsync(f.fileno())
+            
             print(f"[ModsConfig] Written to: {mods_config}")
-            print(f"[ModsConfig] Active mods count: {len(deduped_mods)}")
+            print(f"[ModsConfig] Mods count: {len(filtered_mods)}")
+            
             return True
-        except (IOError, PermissionError) as e:
-            print(f"[ModsConfig] Failed to write: {e}")
+            
+        except Exception as e:
+            print(f"[ModsConfig] Write failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 

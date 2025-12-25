@@ -1258,8 +1258,12 @@ class MainWindow(QMainWindow):
             self.config.set("last_installation", str(install.path))
             
             # Set up installer
+            # Use copy mode for Proton/Wine (Windows builds on Linux) - symlinks don't work
             mods_folder = self.game_detector.get_mods_folder(install)
-            self.installer = ModInstaller(mods_folder)
+            use_copy = install.is_windows_build and install.proton_prefix is not None
+            self.installer = ModInstaller(mods_folder, use_copy=use_copy)
+            if use_copy:
+                print(f"[ModInstaller] Using copy mode for Proton/Wine compatibility")
             
             # Set up downloader
             workshop_path = self.config.get_default_workshop_path()
