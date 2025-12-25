@@ -561,9 +561,12 @@ class GameLaunchDialog(QDialog):
                             cwd=str(game_path),
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            env=env
+                            env=env,
+                            start_new_session=True  # Fully detach from parent
                         )
                         self._log(f"[OK] Game started with Wine!", "#69db7c")
+                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Wine!")
                     else:
                         self._log(f"[ERROR] Wine not found!", "#ff6b6b")
@@ -641,7 +644,8 @@ class GameLaunchDialog(QDialog):
                                 cwd=str(game_path),
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
-                                env=env
+                                env=env,
+                                start_new_session=True  # Fully detach from parent
                             )
                         else:
                             # Fallback to proton run command
@@ -650,9 +654,12 @@ class GameLaunchDialog(QDialog):
                                 cwd=str(game_path),
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
-                                env=env
+                                env=env,
+                                start_new_session=True  # Fully detach from parent
                             )
                         self._log(f"[OK] Game started with Proton!", "#69db7c")
+                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Proton!")
                     elif shutil.which("wine"):
                         # Fallback to wine
@@ -668,9 +675,12 @@ class GameLaunchDialog(QDialog):
                             cwd=str(game_path),
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            env=env
+                            env=env,
+                            start_new_session=True  # Fully detach from parent
                         )
                         self._log(f"[OK] Game started with Wine!", "#69db7c")
+                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Wine!")
                     else:
                         self._log(f"[ERROR] No Proton or Wine found!", "#ff6b6b")
@@ -683,7 +693,8 @@ class GameLaunchDialog(QDialog):
                         [str(exe_path)],
                         cwd=str(game_path),
                         stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True  # Fully detach from parent
                     )
                     self._log(f"[OK] Game started!", "#69db7c")
                     self.status_label.setText("✅ Launched!")
@@ -2476,6 +2487,19 @@ class MainWindow(QMainWindow):
             warning.setStyleSheet("font-size: 11px;")
             layout.addWidget(warning)
         
+        # Tip for Wine/Proton users about mod disabling
+        if install.is_windows_build:
+            tip = QLabel(
+                "<br><b style='color: #74c0fc;'>💡 Tip:</b> If mods become disabled when you close "
+                "this app while the game is running, RimWorld's built-in 'disable mods on crash' "
+                "feature may be triggering.<br><br>"
+                "<b>Fix:</b> In RimWorld, go to <b>Options → General</b> and enable "
+                "<b>Development Mode</b>. This disables the auto-disable feature."
+            )
+            tip.setWordWrap(True)
+            tip.setStyleSheet("font-size: 11px;")
+            layout.addWidget(tip)
+        
         layout.addStretch()
         
         # Close button
@@ -3242,7 +3266,7 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event."""
-        # Cancel any running workers
+        # Cancel any running workers (these are OUR workers, not the game)
         if self.scan_worker and self.scan_worker.isRunning():
             self.scan_worker.cancel()
             self.scan_worker.wait(1000)  # Wait up to 1 second
@@ -3263,5 +3287,9 @@ class MainWindow(QMainWindow):
         self.config.config.window_y = self.y()
         self.config.config.splitter_sizes = self.main_splitter.sizes()
         self.config.save()
+        
+        # Note: Game processes launched with start_new_session=True are fully
+        # independent and will continue running after this app closes.
+        # We do NOT modify ModsConfig.xml on close - that would break the game.
         
         event.accept()
