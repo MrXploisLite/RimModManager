@@ -268,6 +268,203 @@ class WorkshopDialog(QDialog):
         self.accept()
 
 
+class GameLaunchDialog(QDialog):
+    """Dialog for launching game with live detection log."""
+    
+    def __init__(self, installation: 'RimWorldInstallation', parent=None):
+        super().__init__(parent)
+        self.installation = installation
+        self.setWindowTitle("🎮 Launch RimWorld")
+        self.setMinimumSize(500, 350)
+        self._setup_ui()
+        
+        # Start detection after dialog shows
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self._start_detection)
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Header
+        header = QLabel("🎮 Launching RimWorld...")
+        header.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(header)
+        
+        # Live log
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: monospace;
+                font-size: 10px;
+            }
+        """)
+        layout.addWidget(self.log_text, 1)
+        
+        # Status
+        self.status_label = QLabel("Detecting...")
+        self.status_label.setStyleSheet("color: #888;")
+        layout.addWidget(self.status_label)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(self.btn_close)
+        
+        layout.addLayout(btn_layout)
+    
+    def _log(self, msg: str, color: str = "#d4d4d4"):
+        """Add log message."""
+        self.log_text.setTextColor(QColor(color))
+        self.log_text.append(msg)
+        QApplication.processEvents()
+    
+    def _start_detection(self):
+        """Detect and launch game."""
+        import shutil
+        
+        game_path = self.installation.path
+        is_windows = self.installation.is_windows_build
+        
+        self._log(f"[INFO] Game path: {game_path}", "#74c0fc")
+        self._log(f"[INFO] Windows build: {is_windows}", "#74c0fc")
+        
+        # Find executable
+        if is_windows:
+            executables = [
+                game_path / "RimWorldWin64.exe",
+                game_path / "RimWorldWin.exe",
+            ]
+        else:
+            executables = [
+                game_path / "RimWorldLinux",
+                game_path / "RimWorld",
+            ]
+        
+        exe_path = None
+        for exe in executables:
+            self._log(f"[SCAN] Checking: {exe.name}...")
+            if exe.exists():
+                exe_path = exe
+                self._log(f"[OK] Found: {exe}", "#69db7c")
+                break
+            else:
+                self._log(f"[--] Not found", "#888888")
+        
+        if not exe_path:
+            self._log(f"[ERROR] No executable found!", "#ff6b6b")
+            self.status_label.setText("❌ Failed - No executable found")
+            return
+        
+        # Check if Steam owns this game
+        self._log(f"\n[SCAN] Checking Steam license...", "#ffd43b")
+        has_steam_license = self._check_steam_license()
+        
+        if has_steam_license:
+            self._log(f"[OK] Steam license found - launching via Steam", "#69db7c")
+            self._launch_via_steam()
+        else:
+            self._log(f"[INFO] No Steam license - launching directly (standalone/crack)", "#74c0fc")
+            self._launch_direct(exe_path, game_path, is_windows)
+    
+    def _check_steam_license(self) -> bool:
+        """Check if user owns RimWorld on Steam."""
+        import subprocess
+        
+        # Check if Steam is running and has RimWorld in library
+        steam_paths = [
+            Path.home() / ".local/share/Steam",
+            Path.home() / ".steam/steam",
+        ]
+        
+        for steam_path in steam_paths:
+            # Check appmanifest for RimWorld (294100)
+            manifest = steam_path / "steamapps/appmanifest_294100.acf"
+            if manifest.exists():
+                self._log(f"[OK] Found Steam manifest: {manifest.name}", "#69db7c")
+                
+                # Verify it's actually installed (not just cached)
+                try:
+                    content = manifest.read_text()
+                    if '"StateFlags"' in content and '"4"' in content:
+                        self._log(f"[OK] Game is fully installed via Steam", "#69db7c")
+                        return True
+                except:
+                    pass
+        
+        self._log(f"[--] No Steam license/manifest found", "#888888")
+        return False
+    
+    def _launch_via_steam(self):
+        """Launch via Steam."""
+        import subprocess
+        
+        self._log(f"\n[LAUNCH] Starting via Steam...", "#ffd43b")
+        
+        try:
+            subprocess.Popen(
+                ["xdg-open", "steam://rungameid/294100"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            self._log(f"[OK] Steam launch command sent!", "#69db7c")
+            self.status_label.setText("✅ Launched via Steam!")
+        except Exception as e:
+            self._log(f"[ERROR] {e}", "#ff6b6b")
+            self.status_label.setText(f"❌ Failed: {e}")
+    
+    def _launch_direct(self, exe_path: Path, game_path: Path, is_windows: bool):
+        """Launch game directly from folder."""
+        import subprocess
+        import shutil
+        
+        self._log(f"\n[LAUNCH] Starting directly...", "#ffd43b")
+        
+        try:
+            if is_windows:
+                # Try wine
+                if shutil.which("wine"):
+                    self._log(f"[INFO] Using Wine to run Windows executable", "#74c0fc")
+                    
+                    env = os.environ.copy()
+                    if self.installation.proton_prefix:
+                        env["WINEPREFIX"] = str(self.installation.proton_prefix)
+                        self._log(f"[INFO] WINEPREFIX: {self.installation.proton_prefix}", "#74c0fc")
+                    
+                    subprocess.Popen(
+                        ["wine", str(exe_path)],
+                        cwd=str(game_path),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        env=env
+                    )
+                    self._log(f"[OK] Game started with Wine!", "#69db7c")
+                    self.status_label.setText("✅ Launched with Wine!")
+                else:
+                    self._log(f"[ERROR] Wine not found! Install wine to run Windows games.", "#ff6b6b")
+                    self.status_label.setText("❌ Wine not installed")
+            else:
+                # Native Linux
+                self._log(f"[INFO] Running native Linux executable", "#74c0fc")
+                subprocess.Popen(
+                    [str(exe_path)],
+                    cwd=str(game_path),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                self._log(f"[OK] Game started!", "#69db7c")
+                self.status_label.setText("✅ Launched!")
+                
+        except Exception as e:
+            self._log(f"[ERROR] {e}", "#ff6b6b")
+            self.status_label.setText(f"❌ Failed: {e}")
+
+
 class SettingsDialog(QDialog):
     """Dialog for application settings."""
     
@@ -1316,101 +1513,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Failed to open folder: {e}")
     
     def _launch_game(self):
-        """Launch RimWorld directly from game folder."""
+        """Launch RimWorld with smart detection."""
         if not self.current_installation:
             QMessageBox.warning(self, "Error", "No installation selected")
             return
         
-        game_path = self.current_installation.path
-        
-        # Try to find the executable
-        executables = []
-        
-        if self.current_installation.is_windows_build:
-            # Windows executables (via Proton/Wine)
-            executables = [
-                game_path / "RimWorldWin64.exe",
-                game_path / "RimWorldWin.exe",
-            ]
-        else:
-            # Linux executables
-            executables = [
-                game_path / "RimWorldLinux",
-                game_path / "RimWorld",
-            ]
-        
-        exe_path = None
-        for exe in executables:
-            if exe.exists():
-                exe_path = exe
-                break
-        
-        if not exe_path:
-            QMessageBox.warning(
-                self, "Error",
-                f"Could not find RimWorld executable in:\n{game_path}"
-            )
-            return
-        
-        self.status_bar.showMessage(f"Launching RimWorld...")
-        
-        try:
-            if self.current_installation.is_windows_build:
-                # For Windows builds, try to launch via Steam if it's a Steam game
-                # Otherwise use wine/proton directly
-                
-                # First check if there's a proton prefix we can use
-                if self.current_installation.proton_prefix:
-                    # Try to find proton or wine to run the exe
-                    # Use steam-run or just launch via Steam as non-Steam game
-                    
-                    # Method 1: Try steam-run (if available on system)
-                    import shutil
-                    if shutil.which("steam-run"):
-                        subprocess.Popen(
-                            ["steam-run", str(exe_path)],
-                            cwd=str(game_path),
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-                    # Method 2: Try wine directly
-                    elif shutil.which("wine"):
-                        subprocess.Popen(
-                            ["wine", str(exe_path)],
-                            cwd=str(game_path),
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            env={**os.environ, "WINEPREFIX": str(self.current_installation.proton_prefix)}
-                        )
-                    else:
-                        # Fallback: just try to run via xdg-open (might trigger Steam)
-                        subprocess.Popen(
-                            ["xdg-open", str(exe_path)],
-                            cwd=str(game_path),
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-                else:
-                    # No proton prefix, try xdg-open which might use Steam
-                    subprocess.Popen(
-                        ["xdg-open", str(exe_path)],
-                        cwd=str(game_path),
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-            else:
-                # Launch native Linux version directly
-                subprocess.Popen(
-                    [str(exe_path)],
-                    cwd=str(game_path),
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-            
-            self.status_bar.showMessage("RimWorld launched!")
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Launch Error", f"Failed to launch game:\n{e}")
+        # Show launch dialog with live log
+        dialog = GameLaunchDialog(self.current_installation, self)
+        dialog.exec()
     
     def _show_about(self):
         """Show about dialog."""
