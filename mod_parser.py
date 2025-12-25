@@ -15,6 +15,8 @@ from typing import Optional
 from enum import Enum
 from datetime import datetime
 
+from mod_categories import categorize_mod
+
 # Module logger
 log = logging.getLogger("rimmodmanager.mod_parser")
 
@@ -55,6 +57,10 @@ class ModInfo:
     is_active: bool = False
     has_preview: bool = False
     preview_path: Optional[Path] = None
+    
+    # Category (auto-detected)
+    category: str = ""  # ModCategory.value string
+    category_confidence: float = 0.0
     
     # Validity
     is_valid: bool = True
@@ -167,6 +173,9 @@ class ModParser:
         
         # Check for preview image
         mod.get_preview_image()
+        
+        # Auto-detect category
+        self._detect_category(mod)
         
         # Store in cache
         if mod.package_id:
@@ -309,6 +318,17 @@ class ModParser:
                             mod.source = ModSource.WORKSHOP
                 except (IOError, PermissionError):
                     pass
+    
+    def _detect_category(self, mod: ModInfo) -> None:
+        """Auto-detect mod category based on metadata."""
+        result = categorize_mod(
+            package_id=mod.package_id,
+            name=mod.name,
+            description=mod.description,
+            author=mod.author
+        )
+        mod.category = result.category.value
+        mod.category_confidence = result.confidence
     
     def scan_directory(self, directory: Path, source: ModSource = ModSource.LOCAL) -> list[ModInfo]:
         """

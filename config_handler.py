@@ -68,6 +68,9 @@ class AppConfig:
     
     # Active mods list (package IDs in load order) - per installation
     active_mods: dict[str, list[str]] = field(default_factory=dict)
+    
+    # Auto-update settings
+    check_updates_on_startup: bool = False
 
 
 class ConfigHandler:
