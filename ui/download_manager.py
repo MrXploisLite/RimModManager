@@ -10,15 +10,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Callable
+from typing import Optional
 from enum import Enum
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QProgressBar, QGroupBox, QScrollArea, QFrame,
+    QTextEdit, QProgressBar, QGroupBox, QFrame,
     QSplitter, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QProcess, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QTextCursor, QColor
 
 

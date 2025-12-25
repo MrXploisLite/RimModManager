@@ -4,24 +4,21 @@ Integrated Steam Workshop browser with subscription and download features.
 """
 
 import re
-import json
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 from dataclasses import dataclass, field
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QProgressBar,
-    QSplitter, QFrame, QMessageBox, QGroupBox, QCheckBox,
-    QTabWidget, QTextEdit, QScrollArea, QToolBar, QSizePolicy
+    QSplitter, QFrame, QGroupBox, QCheckBox, QTextEdit
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread, QTimer
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
+from PyQt6.QtGui import QColor
 
 # Try to import WebEngine, fallback gracefully if not available
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebEngineCore import QWebEnginePage
     HAS_WEBENGINE = True
 except ImportError:
     HAS_WEBENGINE = False
@@ -328,13 +325,16 @@ class WorkshopBrowser(QWidget):
             r'steamcommunity\.com/sharedfiles/filedetails/\?id=(\d+)',
             r'steamcommunity\.com/workshop/filedetails/\?id=(\d+)',
             r'\?id=(\d+)',
-            r'^(\d{9,12})$',
+            r'^(\d{7,12})$',  # Workshop IDs can be 7-12 digits
         ]
         
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
                 return match.group(1)
+        
+        return None
+    
     def _add_to_queue(self, workshop_id: str, name: str = ""):
         """Add a mod to the download queue."""
         # Check for duplicates

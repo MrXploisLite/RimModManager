@@ -406,7 +406,7 @@ class GameLaunchDialog(QDialog):
                     if '"StateFlags"' in content and '"4"' in content:
                         self._log(f"[OK] Game is fully installed via Steam", "#69db7c")
                         return True
-                except:
+                except (IOError, OSError):
                     pass
         
         self._log(f"[--] No Steam license/manifest found", "#888888")
