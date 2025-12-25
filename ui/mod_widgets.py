@@ -8,10 +8,11 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFrame, QScrollArea,
-    QAbstractItemView, QMenu, QToolTip, QSizePolicy
+    QAbstractItemView, QMenu, QToolTip, QSizePolicy,
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QSize
-from PyQt6.QtGui import QDrag, QPixmap, QIcon, QPalette, QColor, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QSize, QRect, QPoint, QEvent
+from PyQt6.QtGui import QDrag, QPixmap, QIcon, QPalette, QColor, QAction, QPainter, QBrush, QPen, QFont
 
 from mod_parser import ModInfo, ModSource
 
@@ -55,7 +56,7 @@ class ModListItem(QListWidgetItem):
         if not self.mod.is_valid:
             tooltip_parts.append(f"<font color='red'>Error: {self.mod.error_message}</font>")
         
-        tooltip_parts.append("<i>Double-click to activate/deactivate</i>")
+        tooltip_parts.append("<i>Double-click or click ➕/➖ to activate/deactivate</i>")
         
         self.setToolTip("<br>".join(tooltip_parts))
         
@@ -64,10 +65,85 @@ class ModListItem(QListWidgetItem):
             self.setForeground(QColor(200, 100, 100))
 
 
+class HoverButtonDelegate(QStyledItemDelegate):
+    """Delegate that draws hover buttons on list items."""
+    
+    def __init__(self, parent=None, is_active_list: bool = False):
+        super().__init__(parent)
+        self.is_active_list = is_active_list
+        self._hovered_index = None
+        self._button_rect = QRect()
+    
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
+        """Paint the item with hover button."""
+        # Draw default item
+        super().paint(painter, option, index)
+        
+        # Draw button on hover
+        if option.state & QStyle.StateFlag.State_MouseOver:
+            painter.save()
+            
+            # Button area on the right
+            btn_size = 24
+            btn_margin = 4
+            btn_rect = QRect(
+                option.rect.right() - btn_size - btn_margin,
+                option.rect.top() + (option.rect.height() - btn_size) // 2,
+                btn_size,
+                btn_size
+            )
+            self._button_rect = btn_rect
+            
+            # Draw button background
+            if self.is_active_list:
+                # Red minus button for active list
+                painter.setBrush(QBrush(QColor(180, 60, 60)))
+                btn_text = "−"
+            else:
+                # Green plus button for available list
+                painter.setBrush(QBrush(QColor(60, 140, 60)))
+                btn_text = "+"
+            
+            painter.setPen(QPen(QColor(255, 255, 255, 100)))
+            painter.drawRoundedRect(btn_rect, 4, 4)
+            
+            # Draw button text
+            painter.setPen(QPen(QColor(255, 255, 255)))
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(14)
+            painter.setFont(font)
+            painter.drawText(btn_rect, Qt.AlignmentFlag.AlignCenter, btn_text)
+            
+            painter.restore()
+    
+    def editorEvent(self, event, model, option, index):
+        """Handle mouse events on the button."""
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            btn_size = 24
+            btn_margin = 4
+            btn_rect = QRect(
+                option.rect.right() - btn_size - btn_margin,
+                option.rect.top() + (option.rect.height() - btn_size) // 2,
+                btn_size,
+                btn_size
+            )
+            
+            if btn_rect.contains(event.pos()):
+                # Button was clicked - emit signal through parent
+                list_widget = self.parent()
+                if list_widget and hasattr(list_widget, '_on_hover_button_clicked'):
+                    list_widget._on_hover_button_clicked(index)
+                return True
+        
+        return super().editorEvent(event, model, option, index)
+
+
 class DraggableModList(QListWidget):
     """
     A list widget that supports drag-drop reordering.
     Used for both active and inactive mod lists.
+    Shows hover buttons for quick activate/deactivate.
     """
     
     # Signals
@@ -87,12 +163,29 @@ class DraggableModList(QListWidget):
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         
+        # Enable mouse tracking for hover effects
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+        
+        # Set custom delegate for hover buttons
+        self._delegate = HoverButtonDelegate(self, is_active_list)
+        self.setItemDelegate(self._delegate)
+        
         # Context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         
         # Double-click handler
         self.itemDoubleClicked.connect(self._on_double_click)
+    
+    def _on_hover_button_clicked(self, index):
+        """Handle hover button click."""
+        item = self.item(index.row())
+        if isinstance(item, ModListItem):
+            if self.is_active_list:
+                self.mod_deactivated.emit(item.mod)
+            else:
+                self.mod_activated.emit(item.mod)
     
     def add_mod(self, mod: ModInfo) -> ModListItem:
         """Add a mod to the list."""

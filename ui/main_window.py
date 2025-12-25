@@ -350,6 +350,13 @@ class MainWindow(QMainWindow):
         
         actions_bar.addStretch()
         
+        # Play button
+        self.btn_play = QPushButton("🎮 Play RimWorld")
+        self.btn_play.setStyleSheet("background-color: #2a6a2a; font-weight: bold; padding: 6px 16px;")
+        self.btn_play.setToolTip("Launch RimWorld")
+        self.btn_play.clicked.connect(self._launch_game)
+        actions_bar.addWidget(self.btn_play)
+        
         self.btn_workshop = QPushButton("🔧 Download Workshop Mods")
         self.btn_workshop.clicked.connect(self._show_workshop_dialog)
         actions_bar.addWidget(self.btn_workshop)
@@ -1127,6 +1134,68 @@ class MainWindow(QMainWindow):
             subprocess.run(["xdg-open", str(path)], check=False)
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to open folder: {e}")
+    
+    def _launch_game(self):
+        """Launch RimWorld."""
+        if not self.current_installation:
+            QMessageBox.warning(self, "Error", "No installation selected")
+            return
+        
+        game_path = self.current_installation.path
+        
+        # Try to find the executable
+        executables = []
+        
+        if self.current_installation.is_windows_build:
+            # Windows executables (via Proton/Wine)
+            executables = [
+                game_path / "RimWorldWin64.exe",
+                game_path / "RimWorldWin.exe",
+            ]
+        else:
+            # Linux executables
+            executables = [
+                game_path / "RimWorldLinux",
+                game_path / "RimWorld",
+            ]
+        
+        exe_path = None
+        for exe in executables:
+            if exe.exists():
+                exe_path = exe
+                break
+        
+        if not exe_path:
+            QMessageBox.warning(
+                self, "Error",
+                f"Could not find RimWorld executable in:\n{game_path}"
+            )
+            return
+        
+        self.status_bar.showMessage(f"Launching RimWorld...")
+        
+        try:
+            if self.current_installation.is_windows_build:
+                # Launch via Steam for Proton games
+                # steam://rungameid/294100
+                subprocess.Popen(
+                    ["xdg-open", "steam://rungameid/294100"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            else:
+                # Launch native Linux version directly
+                subprocess.Popen(
+                    [str(exe_path)],
+                    cwd=str(game_path),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            
+            self.status_bar.showMessage("RimWorld launched!")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Launch Error", f"Failed to launch game:\n{e}")
     
     def _show_about(self):
         """Show about dialog."""
