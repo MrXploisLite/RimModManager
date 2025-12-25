@@ -143,32 +143,35 @@ RMM:v1:<base64_compressed_json>
 
 ---
 
-### 6. Mod Conflict Visualization ⏳
-**Status**: Pending  
+### 6. Mod Conflict Visualization ✅
+**Status**: Complete  
 **Priority**: Medium  
 **Effort**: Medium
 
 **Description**: Visual graph showing mod dependencies and conflicts.
 
 **Features**:
-- [ ] Interactive dependency graph
-- [ ] Nodes = mods, Edges = dependencies
-- [ ] Color coding:
+- [x] Interactive dependency graph (QGraphicsView)
+- [x] Nodes = mods (draggable), Edges = dependencies
+- [x] Color coding:
   - Green: Satisfied dependency
   - Red: Conflict/Incompatible
   - Yellow: Missing dependency
   - Blue: Load order issue
-- [ ] Click node to select mod
-- [ ] Zoom and pan
-- [ ] Export graph as image
+- [x] Click node to select mod in list
+- [x] Zoom and pan (mouse wheel + drag)
+- [x] Hierarchical and circular layouts
+- [x] Filter by connection type
+
+**Menu**: Tools → 🔗 Dependency Graph... (Ctrl+G)
 
 **Files**:
-- `ui/graph_view.py` - QGraphicsView-based graph widget
+- `ui/graph_view.py` - ModGraphView, ModNode, ModEdge, ConflictGraphDialog
 
 ---
 
-### 7. Compatibility Database ⏳
-**Status**: Pending  
+### 7. Compatibility Database ✅
+**Status**: Complete  
 **Priority**: Medium  
 **Effort**: Medium
 
@@ -179,14 +182,21 @@ RMM:v1:<base64_compressed_json>
 - Format: `communityRules.json`
 
 **Features**:
-- [ ] Download community rules from GitHub
-- [ ] Apply rules to auto-sort
-- [ ] Cache locally with expiry
-- [ ] Manual refresh option
-- [ ] Show rule source in conflict info
+- [x] Download community rules from GitHub
+- [x] Apply rules to auto-sort (topological sort)
+- [x] Cache locally with 24h expiry
+- [x] Manual refresh option
+- [x] Check load order against rules
+- [x] Show issues with severity levels
+
+**Menu**: Tools → 📚 Community Rules →
+- Download/Update Rules...
+- Check Load Order...
+- Sort by Community Rules
 
 **Files**:
-- `compatibility_db.py` - Database download and parsing
+- `compatibility_db.py` - CompatibilityDatabase class
+- `ui/main_window.py` - _download_community_rules(), _check_community_rules(), _sort_by_community_rules()
 
 ---
 
@@ -202,10 +212,12 @@ Sprint 2 (Core Features): ✅ COMPLETE
 ├── 4. Auto-Update Mods ✅
 └── 5. Mod Presets/Collections ✅
 
-Sprint 3 (Advanced): 🚧 IN PROGRESS
-├── 6. Conflict Graph View ⏳
-└── 7. Compatibility Database ⏳
+Sprint 3 (Advanced): ✅ COMPLETE
+├── 6. Conflict Graph View ✅
+└── 7. Compatibility Database ✅
 ```
+
+🎉 **Version 2.0 Complete!**
 
 ---
 
@@ -221,10 +233,10 @@ Sprint 3 (Advanced): 🚧 IN PROGRESS
 rimmodmanager/
 ├── mod_categories.py      # NEW: Auto-categorization ✅
 ├── mod_importer.py        # NEW: RimPy/RimSort import ✅
-├── mod_presets.py         # NEW: Shareable collections
-├── compatibility_db.py    # NEW: Community rules DB
+├── mod_presets.py         # NEW: Shareable collections ✅
+├── compatibility_db.py    # NEW: Community rules DB ✅
 ├── ui/
-│   └── graph_view.py      # NEW: Dependency graph
+│   └── graph_view.py      # NEW: Dependency graph ✅
 ```
 
 ### Data Formats

@@ -1211,6 +1211,28 @@ class MainWindow(QMainWindow):
         apply_action.triggered.connect(self._apply_mods)
         tools_menu.addAction(apply_action)
         
+        tools_menu.addSeparator()
+        
+        graph_action = QAction("🔗 Dependency Graph...", self)
+        graph_action.setShortcut("Ctrl+G")
+        graph_action.triggered.connect(self._show_dependency_graph)
+        tools_menu.addAction(graph_action)
+        
+        # Compatibility Database submenu
+        compat_menu = tools_menu.addMenu("📚 Community Rules")
+        
+        download_rules_action = QAction("Download/Update Rules...", self)
+        download_rules_action.triggered.connect(self._download_community_rules)
+        compat_menu.addAction(download_rules_action)
+        
+        check_rules_action = QAction("Check Load Order...", self)
+        check_rules_action.triggered.connect(self._check_community_rules)
+        compat_menu.addAction(check_rules_action)
+        
+        sort_rules_action = QAction("Sort by Community Rules", self)
+        sort_rules_action.triggered.connect(self._sort_by_community_rules)
+        compat_menu.addAction(sort_rules_action)
+        
         # Help menu
         help_menu = menubar.addMenu("Help")
         
@@ -2208,6 +2230,192 @@ class MainWindow(QMainWindow):
         layout.addWidget(btn_close)
         
         dialog.exec()
+    
+    def _show_dependency_graph(self):
+        """Show the mod dependency/conflict graph visualization."""
+        from ui.graph_view import ConflictGraphDialog
+        
+        # Get all mods (both active and available)
+        all_mods = self.all_mods
+        
+        if not all_mods:
+            QMessageBox.information(
+                self, "No Mods",
+                "No mods loaded. Scan mods first."
+            )
+            return
+        
+        dialog = ConflictGraphDialog(all_mods, self)
+        dialog.mod_selected.connect(self._select_mod_by_id)
+        dialog.exec()
+    
+    def _select_mod_by_id(self, mod_id: str):
+        """Select a mod in the lists by its package ID."""
+        # Try to find in active list first
+        for i in range(self.active_list.count()):
+            item = self.active_list.item(i)
+            mod = item.data(Qt.ItemDataRole.UserRole)
+            if mod and mod.package_id.lower() == mod_id.lower():
+                self.active_list.setCurrentItem(item)
+                self._on_mod_selected(item)
+                return
+        
+        # Try available list
+        for i in range(self.available_list.count()):
+            item = self.available_list.item(i)
+            mod = item.data(Qt.ItemDataRole.UserRole)
+            if mod and mod.package_id.lower() == mod_id.lower():
+                self.available_list.setCurrentItem(item)
+                self._on_mod_selected(item)
+                return
+    
+    def _get_compatibility_db(self):
+        """Get or create compatibility database instance."""
+        if not hasattr(self, '_compat_db'):
+            from compatibility_db import CompatibilityDatabase
+            self._compat_db = CompatibilityDatabase(self.config.config_dir)
+        return self._compat_db
+    
+    def _download_community_rules(self):
+        """Download/update community rules database."""
+        db = self._get_compatibility_db()
+        
+        self.status_bar.showMessage("Downloading community rules...")
+        QApplication.processEvents()
+        
+        if db.download():
+            stats = db.get_stats()
+            QMessageBox.information(
+                self, "Success",
+                f"Downloaded {stats['rule_count']} community rules!\n\n"
+                f"Use 'Check Load Order' to find issues or\n"
+                f"'Sort by Community Rules' to auto-sort."
+            )
+            self.status_bar.showMessage(f"Community rules: {stats['rule_count']} rules loaded")
+        else:
+            # Try loading from cache
+            if db.load_from_cache():
+                QMessageBox.warning(
+                    self, "Network Error",
+                    f"Failed to download fresh rules.\n"
+                    f"Using cached version ({db.rule_count} rules)."
+                )
+            else:
+                QMessageBox.critical(
+                    self, "Error",
+                    "Failed to download community rules.\n"
+                    "Check your internet connection."
+                )
+    
+    def _check_community_rules(self):
+        """Check current load order against community rules."""
+        db = self._get_compatibility_db()
+        
+        # Ensure rules are loaded
+        if not db.is_loaded:
+            if db.is_cache_valid():
+                db.load_from_cache()
+            else:
+                reply = QMessageBox.question(
+                    self, "Download Rules?",
+                    "Community rules not loaded.\nDownload now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    if not db.download():
+                        QMessageBox.critical(self, "Error", "Failed to download rules.")
+                        return
+                else:
+                    return
+        
+        # Get current active mod order
+        active_mods = self.active_list.get_mods()
+        if not active_mods:
+            QMessageBox.information(self, "No Mods", "No active mods to check.")
+            return
+        
+        mod_order = [m.package_id for m in active_mods]
+        issues = db.get_load_order_issues(mod_order)
+        
+        if not issues:
+            QMessageBox.information(
+                self, "All Good! ✅",
+                f"No load order issues found!\n\n"
+                f"Checked {len(mod_order)} mods against {db.rule_count} rules."
+            )
+            return
+        
+        # Show issues dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"⚠️ Load Order Issues ({len(issues)})")
+        dialog.setMinimumSize(600, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        layout.addWidget(QLabel(f"Found {len(issues)} potential issues:"))
+        
+        issues_list = QListWidget()
+        for issue in issues:
+            icon = "🔴" if issue["severity"] == "error" else "🟡"
+            issues_list.addItem(f"{icon} {issue['message']}")
+        layout.addWidget(issues_list, 1)
+        
+        btn_layout = QHBoxLayout()
+        btn_auto_fix = QPushButton("Auto-Sort by Rules")
+        btn_auto_fix.clicked.connect(lambda: (dialog.accept(), self._sort_by_community_rules()))
+        btn_layout.addWidget(btn_auto_fix)
+        
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+        
+        dialog.exec()
+    
+    def _sort_by_community_rules(self):
+        """Sort active mods using community rules."""
+        db = self._get_compatibility_db()
+        
+        # Ensure rules are loaded
+        if not db.is_loaded:
+            if db.is_cache_valid():
+                db.load_from_cache()
+            elif not db.download():
+                QMessageBox.critical(self, "Error", "Failed to load community rules.")
+                return
+        
+        active_mods = self.active_list.get_mods()
+        if not active_mods:
+            QMessageBox.information(self, "No Mods", "No active mods to sort.")
+            return
+        
+        # Get current order
+        mod_ids = [m.package_id for m in active_mods]
+        
+        # Get suggested order
+        sorted_ids = db.suggest_sort_order(mod_ids)
+        
+        # Build lookup
+        mod_by_id = {m.package_id.lower(): m for m in active_mods}
+        
+        # Reorder
+        sorted_mods = []
+        for pid in sorted_ids:
+            mod = mod_by_id.get(pid.lower())
+            if mod:
+                sorted_mods.append(mod)
+        
+        # Update list
+        self.active_list.clear()
+        for mod in sorted_mods:
+            self.active_list.add_mod(mod)
+        
+        self.status_bar.showMessage(f"Sorted {len(sorted_mods)} mods by community rules")
+        QMessageBox.information(
+            self, "Sorted! ✅",
+            f"Sorted {len(sorted_mods)} mods using community rules.\n\n"
+            f"Review the order and click 'Apply' when ready."
+        )
     
     def _setup_workshop_browser(self):
         """Set up the Workshop browser tab."""
