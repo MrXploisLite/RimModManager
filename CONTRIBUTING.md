@@ -36,8 +36,8 @@ Feature requests are welcome! Please:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/RimWorld-Mod-Manager-for-Arch-Linux.git
-cd RimWorld-Mod-Manager-for-Arch-Linux
+git clone https://github.com/YOUR_USERNAME/RimModManager.git
+cd RimModManager
 
 # Install dependencies
 sudo pacman -S python python-pyqt6 python-pyqt6-webengine

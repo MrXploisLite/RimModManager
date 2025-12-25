@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💬 Discussions
-    url: https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux/discussions
+    url: https://github.com/MrXploisLite/RimModManager/discussions
     about: Ask questions and discuss ideas
   - name: 📖 Wiki
-    url: https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux/wiki
+    url: https://github.com/MrXploisLite/RimModManager/wiki
     about: Check the wiki for documentation
