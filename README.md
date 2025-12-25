@@ -1,4 +1,4 @@
-# I want to talk about why there are so many commits, because there are a lot of trials and sometimes things get stuck.
+# I want to talk about why there are so many commits, because there are a lot of trials and sometimes things get stuck my experiments.
 
 <div align="center">
 
