@@ -9,12 +9,103 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFrame, QScrollArea,
     QAbstractItemView, QMenu, QToolTip, QSizePolicy,
-    QStyledItemDelegate, QStyle, QStyleOptionViewItem
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem,
+    QLineEdit, QComboBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QSize, QRect, QPoint, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QSize, QRect, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QDrag, QPixmap, QIcon, QPalette, QColor, QAction, QPainter, QBrush, QPen, QFont
 
 from mod_parser import ModInfo, ModSource
+
+
+class ModSearchFilter(QWidget):
+    """Search and filter widget for mod lists."""
+    
+    filter_changed = pyqtSignal()  # Emitted when filter criteria change
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._search_text = ""
+        self._source_filter = None  # None = all sources
+        self._setup_ui()
+        
+        # Debounce timer for search
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._on_search_timeout)
+    
+    def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        
+        # Search box
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍 Search mods...")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.textChanged.connect(self._on_search_changed)
+        layout.addWidget(self.search_input, 1)
+        
+        # Source filter dropdown
+        self.source_combo = QComboBox()
+        self.source_combo.addItem("All Sources", None)
+        self.source_combo.addItem("📁 Local", ModSource.LOCAL)
+        self.source_combo.addItem("🔧 Workshop", ModSource.WORKSHOP)
+        self.source_combo.addItem("🎮 Core/DLC", ModSource.GAME)
+        self.source_combo.setFixedWidth(120)
+        self.source_combo.currentIndexChanged.connect(self._on_source_changed)
+        layout.addWidget(self.source_combo)
+    
+    def _on_search_changed(self, text: str):
+        """Handle search text change with debounce."""
+        self._search_text = text.lower().strip()
+        self._search_timer.start(150)  # 150ms debounce
+    
+    def _on_search_timeout(self):
+        """Emit filter changed after debounce."""
+        self.filter_changed.emit()
+    
+    def _on_source_changed(self, index: int):
+        """Handle source filter change."""
+        self._source_filter = self.source_combo.itemData(index)
+        self.filter_changed.emit()
+    
+    def matches(self, mod: ModInfo) -> bool:
+        """Check if a mod matches current filter criteria."""
+        # Source filter
+        if self._source_filter is not None:
+            if mod.source != self._source_filter:
+                return False
+        
+        # Search text filter
+        if self._search_text:
+            searchable = " ".join([
+                mod.display_name().lower(),
+                mod.package_id.lower(),
+                mod.author.lower() if mod.author else "",
+                mod.description.lower() if mod.description else "",
+            ])
+            # Support multiple search terms (AND logic)
+            terms = self._search_text.split()
+            for term in terms:
+                if term not in searchable:
+                    return False
+        
+        return True
+    
+    def filter_mods(self, mods: list[ModInfo]) -> list[ModInfo]:
+        """Filter a list of mods based on current criteria."""
+        return [mod for mod in mods if self.matches(mod)]
+    
+    def clear_filters(self):
+        """Reset all filters."""
+        self.search_input.clear()
+        self.source_combo.setCurrentIndex(0)
+    
+    @property
+    def has_active_filter(self) -> bool:
+        """Check if any filter is active."""
+        return bool(self._search_text) or self._source_filter is not None
 
 
 class ModListItem(QListWidgetItem):
@@ -155,6 +246,7 @@ class DraggableModList(QListWidget):
     A list widget that supports drag-drop reordering.
     Used for both active and inactive mod lists.
     Shows hover buttons for quick activate/deactivate.
+    Supports search/filter functionality.
     """
     
     # Signals
@@ -165,6 +257,8 @@ class DraggableModList(QListWidget):
     def __init__(self, parent=None, is_active_list: bool = False):
         super().__init__(parent)
         self.is_active_list = is_active_list
+        self._all_mods: list[ModInfo] = []  # Store all mods for filtering
+        self._search_filter: Optional[ModSearchFilter] = None
         
         # Enable drag-drop
         self.setDragEnabled(True)
@@ -189,6 +283,30 @@ class DraggableModList(QListWidget):
         # Double-click handler
         self.itemDoubleClicked.connect(self._on_double_click)
     
+    def set_search_filter(self, search_filter: 'ModSearchFilter'):
+        """Connect a search filter widget to this list."""
+        self._search_filter = search_filter
+        search_filter.filter_changed.connect(self._apply_filter)
+    
+    def _apply_filter(self):
+        """Apply current filter to the mod list."""
+        if not self._search_filter:
+            return
+        
+        # Store current selection
+        selected_ids = {item.mod.package_id.lower() for item in self.selectedItems() 
+                       if isinstance(item, ModListItem)}
+        
+        # Clear and repopulate with filtered mods
+        self.clear()
+        for mod in self._all_mods:
+            if self._search_filter.matches(mod):
+                item = ModListItem(mod)
+                self.addItem(item)
+                # Restore selection
+                if mod.package_id.lower() in selected_ids:
+                    item.setSelected(True)
+    
     def _on_hover_button_clicked(self, index):
         """Handle hover button click."""
         item = self.item(index.row())
@@ -202,16 +320,23 @@ class DraggableModList(QListWidget):
         """Add a mod to the list. Prevents duplicates (case-insensitive)."""
         # Check if mod already exists (case-insensitive by package_id)
         mod_id_lower = mod.package_id.lower()
-        for i in range(self.count()):
-            item = self.item(i)
-            if isinstance(item, ModListItem):
-                if item.mod.package_id.lower() == mod_id_lower:
-                    # Already exists, don't add duplicate
-                    return item
         
-        item = ModListItem(mod)
-        self.addItem(item)
-        return item
+        # Check in _all_mods first
+        for existing in self._all_mods:
+            if existing.package_id.lower() == mod_id_lower:
+                # Already exists in master list
+                return self.find_mod(mod_id_lower)
+        
+        # Add to master list
+        self._all_mods.append(mod)
+        
+        # Add to visible list if passes filter
+        if self._search_filter is None or self._search_filter.matches(mod):
+            item = ModListItem(mod)
+            self.addItem(item)
+            return item
+        
+        return None
     
     def add_mods(self, mods: list[ModInfo]) -> None:
         """Add multiple mods to the list. Prevents duplicates."""
@@ -219,13 +344,22 @@ class DraggableModList(QListWidget):
             self.add_mod(mod)
     
     def get_mods(self) -> list[ModInfo]:
-        """Get all mods in order."""
+        """Get all mods in order (from master list, not filtered view)."""
+        # If filter is active, return from _all_mods to preserve full list
+        if self._search_filter and self._search_filter.has_active_filter:
+            return list(self._all_mods)
+        
+        # Otherwise return visible items in order
         mods = []
         for i in range(self.count()):
             item = self.item(i)
             if isinstance(item, ModListItem):
                 mods.append(item.mod)
         return mods
+    
+    def get_all_mods(self) -> list[ModInfo]:
+        """Get all mods regardless of filter state."""
+        return list(self._all_mods)
     
     def get_selected_mods(self) -> list[ModInfo]:
         """Get currently selected mods."""
@@ -243,6 +377,9 @@ class DraggableModList(QListWidget):
         for item in self.selectedItems():
             if isinstance(item, ModListItem):
                 removed.append(item.mod)
+                # Also remove from master list
+                mod_id = item.mod.package_id.lower()
+                self._all_mods = [m for m in self._all_mods if m.package_id.lower() != mod_id]
             items_to_remove.append((self.row(item), item))
         
         # Sort by row in reverse order and remove
@@ -256,8 +393,27 @@ class DraggableModList(QListWidget):
     
     def clear_mods(self) -> None:
         """Clear all mods from the list."""
+        self._all_mods.clear()
         self.clear()
         self.mods_changed.emit()
+    
+    def remove_mod(self, mod: ModInfo) -> bool:
+        """Remove a specific mod from the list."""
+        mod_id = mod.package_id.lower()
+        
+        # Remove from master list
+        original_len = len(self._all_mods)
+        self._all_mods = [m for m in self._all_mods if m.package_id.lower() != mod_id]
+        
+        # Remove from visible list
+        for i in range(self.count() - 1, -1, -1):
+            item = self.item(i)
+            if isinstance(item, ModListItem) and item.mod.package_id.lower() == mod_id:
+                self.takeItem(i)
+                self.mods_changed.emit()
+                return True
+        
+        return len(self._all_mods) < original_len
     
     def find_mod(self, package_id: str) -> Optional[ModListItem]:
         """Find a mod by package ID."""

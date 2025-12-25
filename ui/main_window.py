@@ -26,7 +26,8 @@ from game_detector import GameDetector, RimWorldInstallation, InstallationType
 from mod_parser import ModParser, ModInfo, ModSource
 from workshop_downloader import WorkshopDownloader, ModInstaller, DownloadTask, DownloadStatus
 from ui.mod_widgets import (
-    DraggableModList, ModDetailsPanel, ModListControls, ConflictWarningWidget
+    DraggableModList, ModDetailsPanel, ModListControls, ConflictWarningWidget,
+    ModSearchFilter
 )
 from ui.workshop_browser import WorkshopBrowser, WorkshopDownloadDialog
 from ui.download_manager import DownloadLogWidget, SteamCMDChecker, LiveDownloadWorker
@@ -947,13 +948,12 @@ class MainWindow(QMainWindow):
         left_header.addWidget(self.available_count)
         left_layout.addLayout(left_header)
         
-        # Search filter
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Search mods...")
-        self.search_input.textChanged.connect(self._filter_available_mods)
-        left_layout.addWidget(self.search_input)
+        # Search filter widget
+        self.available_search_filter = ModSearchFilter()
+        left_layout.addWidget(self.available_search_filter)
         
         self.available_list = DraggableModList(is_active_list=False)
+        self.available_list.set_search_filter(self.available_search_filter)
         left_layout.addWidget(self.available_list)
         
         self.available_controls = ModListControls(is_active_list=False)
@@ -977,7 +977,12 @@ class MainWindow(QMainWindow):
         center_header.addWidget(self.active_count)
         center_layout.addLayout(center_header)
         
+        # Search filter for active mods
+        self.active_search_filter = ModSearchFilter()
+        center_layout.addWidget(self.active_search_filter)
+        
         self.active_list = DraggableModList(is_active_list=True)
+        self.active_list.set_search_filter(self.active_search_filter)
         center_layout.addWidget(self.active_list)
         
         self.active_controls = ModListControls(is_active_list=True)
@@ -1523,26 +1528,15 @@ class MainWindow(QMainWindow):
         self.status_inactive_label.setText(f"Inactive: {available}")
     
     def _filter_available_mods(self, text: str):
-        """Filter available mods by search text."""
-        text = text.lower()
-        for i in range(self.available_list.count()):
-            item = self.available_list.item(i)
-            if isinstance(item, DraggableModList):
-                continue
-            if hasattr(item, 'mod'):
-                mod = item.mod
-                visible = (
-                    text in mod.display_name().lower() or
-                    text in mod.package_id.lower() or
-                    text in mod.author.lower()
-                )
-                item.setHidden(not visible)
+        """Legacy filter method - now handled by ModSearchFilter widget."""
+        # Filtering is now handled by ModSearchFilter connected to DraggableModList
+        pass
     
     def _focus_search(self):
         """Focus the search input box."""
         self.main_tabs.setCurrentIndex(0)  # Switch to Mod Manager tab
-        self.search_input.setFocus()
-        self.search_input.selectAll()
+        self.available_search_filter.search_input.setFocus()
+        self.available_search_filter.search_input.selectAll()
     
     def _on_available_selection(self):
         """Handle selection in available list."""

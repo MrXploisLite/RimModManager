@@ -4,6 +4,7 @@ UI Package for RimModManager
 
 from .mod_widgets import (
     ModListItem,
+    ModSearchFilter,
     DraggableModList,
     ModDetailsPanel,
     ModListControls,
@@ -22,6 +23,7 @@ from .tools_widgets import (
 
 __all__ = [
     'ModListItem',
+    'ModSearchFilter',
     'DraggableModList',
     'ModDetailsPanel',
     'ModListControls',
