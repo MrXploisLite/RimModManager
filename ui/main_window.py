@@ -991,6 +991,10 @@ class MainWindow(QMainWindow):
         
         # List changes
         self.active_list.mods_changed.connect(self._check_conflicts)
+        
+        # Details panel actions
+        self.details_panel.uninstall_requested.connect(self._uninstall_mod)
+        self.details_panel.open_folder_requested.connect(self._open_mod_folder)
     
     def _initial_setup(self):
         """Perform initial setup after window is shown."""
@@ -1336,6 +1340,90 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Deactivated: {mod.display_name()}")
                 return
         self.status_bar.showMessage(f"Mod not found: {package_id}")
+    
+    def _uninstall_mod(self, mod):
+        """Uninstall (delete) a mod permanently."""
+        from mod_parser import ModSource
+        
+        if not mod or not mod.path:
+            return
+        
+        # Don't allow uninstalling core game mods
+        if mod.source == ModSource.GAME:
+            QMessageBox.warning(
+                self, "Cannot Uninstall",
+                "Cannot uninstall core game files."
+            )
+            return
+        
+        # Confirm deletion
+        reply = QMessageBox.warning(
+            self, "Uninstall Mod",
+            f"Are you sure you want to permanently delete this mod?\n\n"
+            f"Name: {mod.display_name()}\n"
+            f"Path: {mod.path}\n\n"
+            f"This action cannot be undone!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        try:
+            # First deactivate if active
+            if mod.is_active:
+                self._deactivate_mod(mod)
+            
+            # Remove from available list
+            item = self.available_list.find_mod(mod.package_id)
+            if item:
+                row = self.available_list.row(item)
+                self.available_list.takeItem(row)
+            
+            # Delete the mod folder
+            import shutil
+            if mod.path.exists():
+                shutil.rmtree(mod.path)
+            
+            # Remove from all_mods list
+            self.all_mods = [m for m in self.all_mods if m.package_id.lower() != mod.package_id.lower()]
+            
+            # Clear details panel
+            self.details_panel.clear()
+            
+            self._update_counts()
+            self.status_bar.showMessage(f"Uninstalled: {mod.display_name()}")
+            
+            QMessageBox.information(
+                self, "Mod Uninstalled",
+                f"Successfully uninstalled '{mod.display_name()}'."
+            )
+            
+        except PermissionError:
+            QMessageBox.critical(
+                self, "Uninstall Failed",
+                f"Permission denied. Cannot delete:\n{mod.path}\n\n"
+                "Try running the application with elevated permissions."
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Uninstall Failed",
+                f"Failed to uninstall mod:\n{e}"
+            )
+    
+    def _open_mod_folder(self, mod):
+        """Open the mod's folder in file manager."""
+        if not mod or not mod.path:
+            return
+        
+        if mod.path.exists():
+            self._open_folder(mod.path)
+        else:
+            QMessageBox.warning(
+                self, "Folder Not Found",
+                f"Mod folder does not exist:\n{mod.path}"
+            )
     
     def _on_profile_loaded(self, mod_ids: list[str]):
         """Handle profile/backup loaded - update mod lists."""
