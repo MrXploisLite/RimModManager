@@ -27,6 +27,7 @@ class ModSearchFilter(QWidget):
         super().__init__(parent)
         self._search_text = ""
         self._source_filter = None  # None = all sources
+        self._category_filter = None  # None = all categories
         self._setup_ui()
         
         # Debounce timer for search
@@ -45,6 +46,17 @@ class ModSearchFilter(QWidget):
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._on_search_changed)
         layout.addWidget(self.search_input, 1)
+        
+        # Category filter dropdown
+        self.category_combo = QComboBox()
+        self.category_combo.addItem("All Categories", None)
+        # Import categories
+        from mod_categories import ModCategory
+        for cat in ModCategory:
+            self.category_combo.addItem(cat.value, cat.value)
+        self.category_combo.setFixedWidth(160)
+        self.category_combo.currentIndexChanged.connect(self._on_category_changed)
+        layout.addWidget(self.category_combo)
         
         # Source filter dropdown
         self.source_combo = QComboBox()
@@ -70,11 +82,21 @@ class ModSearchFilter(QWidget):
         self._source_filter = self.source_combo.itemData(index)
         self.filter_changed.emit()
     
+    def _on_category_changed(self, index: int):
+        """Handle category filter change."""
+        self._category_filter = self.category_combo.itemData(index)
+        self.filter_changed.emit()
+    
     def matches(self, mod: ModInfo) -> bool:
         """Check if a mod matches current filter criteria."""
         # Source filter
         if self._source_filter is not None:
             if mod.source != self._source_filter:
+                return False
+        
+        # Category filter
+        if self._category_filter is not None:
+            if mod.category != self._category_filter:
                 return False
         
         # Search text filter
@@ -84,6 +106,7 @@ class ModSearchFilter(QWidget):
                 mod.package_id.lower(),
                 mod.author.lower() if mod.author else "",
                 mod.description.lower() if mod.description else "",
+                mod.category.lower() if mod.category else "",
             ])
             # Support multiple search terms (AND logic)
             terms = self._search_text.split()
@@ -101,11 +124,12 @@ class ModSearchFilter(QWidget):
         """Reset all filters."""
         self.search_input.clear()
         self.source_combo.setCurrentIndex(0)
+        self.category_combo.setCurrentIndex(0)
     
     @property
     def has_active_filter(self) -> bool:
         """Check if any filter is active."""
-        return bool(self._search_text) or self._source_filter is not None
+        return bool(self._search_text) or self._source_filter is not None or self._category_filter is not None
 
 
 class ModListItem(QListWidgetItem):
@@ -129,7 +153,12 @@ class ModListItem(QListWidgetItem):
         }
         icon = source_icons.get(self.mod.source, "📦")
         
-        self.setText(f"{icon} {name}")
+        # Get category icon if available
+        cat_icon = ""
+        if self.mod.category:
+            cat_icon = self.mod.category.split()[0] + " "  # Get just the emoji
+        
+        self.setText(f"{icon} {cat_icon}{name}")
         
         # Set tooltip with more info
         tooltip_parts = [
@@ -137,6 +166,10 @@ class ModListItem(QListWidgetItem):
             f"Package ID: {self.mod.package_id}",
             f"Author: {self.mod.author}",
         ]
+        
+        # Add category to tooltip
+        if self.mod.category:
+            tooltip_parts.append(f"Category: {self.mod.category}")
         
         if self.mod.supported_versions:
             tooltip_parts.append(f"Versions: {', '.join(self.mod.supported_versions)}")
@@ -606,6 +639,11 @@ class ModDetailsPanel(QFrame):
         self.source_label = QLabel()
         layout.addWidget(self.source_label)
         
+        # Category
+        self.category_label = QLabel()
+        self.category_label.setStyleSheet("color: #8af; font-weight: bold;")
+        layout.addWidget(self.category_label)
+        
         # Description (scrollable)
         self.description_scroll = QScrollArea()
         self.description_scroll.setWidgetResizable(True)
@@ -702,6 +740,13 @@ class ModDetailsPanel(QFrame):
         
         self.source_label.setText(f"Source: {mod.source.value}")
         
+        # Category
+        if mod.category:
+            self.category_label.setText(f"Category: {mod.category}")
+            self.category_label.show()
+        else:
+            self.category_label.hide()
+        
         # Description
         desc = mod.description or "No description available."
         # Truncate very long descriptions
@@ -756,6 +801,7 @@ class ModDetailsPanel(QFrame):
         self.package_id_label.clear()
         self.versions_label.clear()
         self.source_label.clear()
+        self.category_label.clear()
         self.description_label.clear()
         self.deps_label.clear()
         self.path_label.clear()

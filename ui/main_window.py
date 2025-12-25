@@ -757,6 +757,16 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(ui_group)
         
+        # Update Settings
+        update_group = QGroupBox("Updates")
+        update_layout = QVBoxLayout(update_group)
+        
+        self.check_updates_startup = QCheckBox("Check for mod updates on startup")
+        self.check_updates_startup.setToolTip("Automatically check Workshop mods for updates when the app starts")
+        update_layout.addWidget(self.check_updates_startup)
+        
+        layout.addWidget(update_group)
+        
         # Config file location info
         info_group = QGroupBox("Configuration")
         info_layout = QVBoxLayout(info_group)
@@ -788,11 +798,13 @@ class SettingsDialog(QDialog):
         """Load current settings into the dialog."""
         self.workshop_path_edit.setText(self.config.config.workshop_download_path)
         self.steamcmd_path_edit.setText(self.config.config.steamcmd_path)
+        self.check_updates_startup.setChecked(self.config.config.check_updates_on_startup)
     
     def _save_settings(self):
         """Save settings and close dialog."""
         self.config.config.workshop_download_path = self.workshop_path_edit.text()
         self.config.config.steamcmd_path = self.steamcmd_path_edit.text()
+        self.config.config.check_updates_on_startup = self.check_updates_startup.isChecked()
         self.config.save()
         self.accept()
     
@@ -1106,6 +1118,11 @@ class MainWindow(QMainWindow):
         load_action.triggered.connect(self._load_modlist)
         file_menu.addAction(load_action)
         
+        import_action = QAction("Import from RimPy/RimSort...", self)
+        import_action.setShortcut("Ctrl+I")
+        import_action.triggered.connect(self._import_modlist)
+        file_menu.addAction(import_action)
+        
         file_menu.addSeparator()
         
         # Export modlist as text
@@ -1113,6 +1130,21 @@ class MainWindow(QMainWindow):
         export_text_action.setShortcut("Ctrl+Shift+E")
         export_text_action.triggered.connect(self._export_modlist_text)
         file_menu.addAction(export_text_action)
+        
+        file_menu.addSeparator()
+        
+        # Preset sharing
+        export_preset_action = QAction("📤 Export as Shareable Code...", self)
+        export_preset_action.setShortcut("Ctrl+Shift+C")
+        export_preset_action.triggered.connect(self._export_preset_code)
+        file_menu.addAction(export_preset_action)
+        
+        import_preset_action = QAction("📥 Import from Code...", self)
+        import_preset_action.setShortcut("Ctrl+Shift+V")
+        import_preset_action.triggered.connect(self._import_preset_code)
+        file_menu.addAction(import_preset_action)
+        
+        file_menu.addSeparator()
         
         # Save/Export current config
         export_config_action = QAction("Export Config...", self)
@@ -1291,6 +1323,10 @@ class MainWindow(QMainWindow):
             
             # Scan mods
             self._scan_mods()
+            
+            # Check for updates on startup if enabled
+            if self.config.config.check_updates_on_startup:
+                QTimer.singleShot(2000, self._check_updates_on_startup)
     
     def _add_custom_installation(self):
         """Add a custom game installation path."""
@@ -1626,6 +1662,20 @@ class MainWindow(QMainWindow):
         """Get list of active ModInfo objects."""
         return self.active_list.get_mods()
     
+    def _check_updates_on_startup(self):
+        """Check for mod updates on startup (if enabled)."""
+        workshop_mods = [m for m in self.all_mods if m.steam_workshop_id]
+        if not workshop_mods:
+            return
+        
+        log.info(f"Checking updates for {len(workshop_mods)} Workshop mods on startup...")
+        self.status_bar.showMessage(f"Checking for mod updates...")
+        
+        # Switch to Tools tab and trigger update check
+        self.main_tabs.setCurrentIndex(4)  # Tools tab
+        if hasattr(self.tools_widget, 'update_checker'):
+            self.tools_widget.update_checker._check_updates()
+    
     def _deactivate_mod_by_id(self, package_id: str):
         """Deactivate a mod by its package ID."""
         mods = self.active_list.get_mods()
@@ -1933,6 +1983,133 @@ class MainWindow(QMainWindow):
         self._update_counts()
         self._check_conflicts()
         self.status_bar.showMessage(f"Loaded modlist: {data.get('name', filepath.stem)}")
+    
+    def _import_modlist(self):
+        """Import modlist from RimPy, RimSort, or other formats."""
+        from mod_importer import ModImporter, ImportFormat
+        
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Import Modlist",
+            str(Path.home()),
+            "All Supported (*.json *.xml *.txt *.rml);;JSON Files (*.json);;XML Files (*.xml);;Text Files (*.txt *.rml);;All Files (*)"
+        )
+        if not filepath:
+            return
+        
+        filepath = Path(filepath)
+        importer = ModImporter()
+        result = importer.import_file(filepath)
+        
+        if not result.success:
+            error_msg = "\n".join(result.errors) if result.errors else "Unknown error"
+            QMessageBox.warning(self, "Import Failed", f"Failed to import modlist:\n\n{error_msg}")
+            return
+        
+        # Show import summary
+        summary = f"<b>Format:</b> {result.format_detected.value}<br>"
+        summary += f"<b>Package IDs:</b> {len(result.package_ids)}<br>"
+        summary += f"<b>Workshop IDs:</b> {len(result.workshop_ids)}<br>"
+        
+        if result.warnings:
+            summary += f"<br><b>Warnings:</b><br>"
+            for w in result.warnings[:5]:
+                summary += f"• {w}<br>"
+            if len(result.warnings) > 5:
+                summary += f"• ... and {len(result.warnings) - 5} more<br>"
+        
+        # Ask user how to apply
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Import Modlist")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(f"Successfully parsed modlist from:<br><code>{filepath.name}</code><br><br>{summary}")
+        msg.setInformativeText("How would you like to apply this modlist?")
+        
+        btn_replace = msg.addButton("Replace Current", QMessageBox.ButtonRole.AcceptRole)
+        btn_merge = msg.addButton("Merge (Add Missing)", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        
+        msg.exec()
+        clicked = msg.clickedButton()
+        
+        if clicked == btn_replace:
+            self._apply_imported_modlist(result, replace=True)
+        elif clicked == btn_merge:
+            self._apply_imported_modlist(result, replace=False)
+        # Cancel does nothing
+    
+    def _apply_imported_modlist(self, result, replace: bool = True):
+        """Apply imported modlist to current mod lists."""
+        from mod_importer import ImportResult
+        
+        # Build mod lookup
+        mod_by_id = {mod.package_id.lower(): mod for mod in self.all_mods}
+        
+        if replace:
+            # Clear current active mods
+            self.available_list.clear_mods()
+            self.active_list.clear_mods()
+            
+            active_ids_set = set(pid.lower() for pid in result.package_ids)
+            
+            # Add active mods in imported order
+            found_count = 0
+            missing_ids = []
+            for pid in result.package_ids:
+                mod = mod_by_id.get(pid.lower())
+                if mod:
+                    mod.is_active = True
+                    self.active_list.add_mod(mod)
+                    found_count += 1
+                else:
+                    missing_ids.append(pid)
+            
+            # Add remaining mods to available list
+            for mod in self.all_mods:
+                if mod.package_id.lower() not in active_ids_set:
+                    mod.is_active = False
+                    self.available_list.add_mod(mod)
+            
+            status_msg = f"Imported {found_count} mods"
+            if missing_ids:
+                status_msg += f" ({len(missing_ids)} not found)"
+                log.warning(f"Missing mods from import: {missing_ids[:10]}")
+        else:
+            # Merge - add missing mods to active list
+            current_active = {mod.package_id.lower() for mod in self.active_list.get_all_mods()}
+            added_count = 0
+            
+            for pid in result.package_ids:
+                pid_lower = pid.lower()
+                if pid_lower not in current_active:
+                    mod = mod_by_id.get(pid_lower)
+                    if mod:
+                        # Remove from available, add to active
+                        self.available_list.remove_mod(mod)
+                        mod.is_active = True
+                        self.active_list.add_mod(mod)
+                        added_count += 1
+            
+            status_msg = f"Added {added_count} mods from import"
+        
+        # Handle workshop IDs - offer to download
+        if result.workshop_ids:
+            reply = QMessageBox.question(
+                self, "Download Workshop Mods?",
+                f"The imported modlist contains {len(result.workshop_ids)} Workshop IDs.\n\n"
+                "Would you like to add them to the download queue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                # Add to workshop browser queue if available
+                if hasattr(self, 'workshop_browser') and self.workshop_browser:
+                    for wid in result.workshop_ids:
+                        self.workshop_browser.browser._add_to_queue(wid)
+                    self.main_tabs.setCurrentIndex(1)  # Switch to Workshop tab
+                    status_msg += f", {len(result.workshop_ids)} added to download queue"
+        
+        self._update_counts()
+        self._check_conflicts()
+        self.status_bar.showMessage(status_msg)
     
     def _show_paths_dialog(self):
         """Show the paths management dialog."""
@@ -2354,6 +2531,208 @@ class MainWindow(QMainWindow):
             clipboard = QApplication.clipboard()
             clipboard.setText(text_content)
             self.status_bar.showMessage("Modlist copied to clipboard!")
+    
+    def _export_preset_code(self):
+        """Export active modlist as a shareable preset code."""
+        from mod_presets import PresetEncoder
+        
+        active_mods = self.active_list.get_mods()
+        
+        if not active_mods:
+            QMessageBox.information(self, "No Mods", "No active mods to export.")
+            return
+        
+        # Get preset name
+        name, ok = QInputDialog.getText(
+            self, "Export Preset",
+            "Enter a name for this preset:",
+            text="My Modlist"
+        )
+        if not ok or not name:
+            return
+        
+        # Build data
+        package_ids = [mod.package_id for mod in active_mods]
+        workshop_ids = [mod.steam_workshop_id for mod in active_mods if mod.steam_workshop_id]
+        
+        try:
+            code = PresetEncoder.encode(
+                package_ids=package_ids,
+                name=name,
+                workshop_ids=workshop_ids,
+            )
+        except ValueError as e:
+            QMessageBox.warning(self, "Error", f"Failed to create preset code:\n{e}")
+            return
+        
+        # Show result dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("📤 Preset Code")
+        dialog.setMinimumSize(500, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        info = QLabel(f"<b>{name}</b><br>{len(package_ids)} mods, {len(workshop_ids)} Workshop IDs<br>Code length: {len(code)} characters")
+        layout.addWidget(info)
+        
+        code_edit = QTextEdit()
+        code_edit.setPlainText(code)
+        code_edit.setReadOnly(True)
+        code_edit.setStyleSheet("font-family: monospace; font-size: 11px;")
+        layout.addWidget(code_edit)
+        
+        btn_layout = QHBoxLayout()
+        
+        copy_btn = QPushButton("📋 Copy to Clipboard")
+        copy_btn.clicked.connect(lambda: self._copy_to_clipboard(code, "Preset code copied!"))
+        btn_layout.addWidget(copy_btn)
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        dialog.exec()
+    
+    def _import_preset_code(self):
+        """Import modlist from a shareable preset code."""
+        from mod_presets import PresetEncoder
+        
+        # Get code from user
+        dialog = QDialog(self)
+        dialog.setWindowTitle("📥 Import Preset Code")
+        dialog.setMinimumSize(500, 250)
+        
+        layout = QVBoxLayout(dialog)
+        
+        layout.addWidget(QLabel("Paste the preset code below:"))
+        
+        code_edit = QTextEdit()
+        code_edit.setPlaceholderText("RMM:v1:...")
+        code_edit.setStyleSheet("font-family: monospace;")
+        layout.addWidget(code_edit)
+        
+        btn_layout = QHBoxLayout()
+        
+        import_btn = QPushButton("Import")
+        cancel_btn = QPushButton("Cancel")
+        
+        btn_layout.addWidget(import_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+        
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        result = {"code": None}
+        
+        def on_import():
+            result["code"] = code_edit.toPlainText().strip()
+            dialog.accept()
+        
+        import_btn.clicked.connect(on_import)
+        
+        if dialog.exec() != QDialog.DialogCode.Accepted or not result["code"]:
+            return
+        
+        code = result["code"]
+        
+        # Decode preset
+        preset = PresetEncoder.decode(code)
+        if not preset:
+            QMessageBox.warning(self, "Invalid Code", "Failed to decode preset code.\n\nMake sure you copied the entire code starting with 'RMM:'")
+            return
+        
+        # Show summary and ask how to apply
+        summary = f"<b>Name:</b> {preset.name}<br>"
+        summary += f"<b>Mods:</b> {len(preset.package_ids)}<br>"
+        summary += f"<b>Workshop IDs:</b> {len(preset.workshop_ids)}<br>"
+        if preset.created_at:
+            summary += f"<b>Created:</b> {preset.created_at}<br>"
+        if preset.author:
+            summary += f"<b>Author:</b> {preset.author}<br>"
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Import Preset")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(f"Preset decoded successfully!<br><br>{summary}")
+        msg.setInformativeText("How would you like to apply this preset?")
+        
+        btn_replace = msg.addButton("Replace Current", QMessageBox.ButtonRole.AcceptRole)
+        btn_merge = msg.addButton("Merge (Add Missing)", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        
+        msg.exec()
+        clicked = msg.clickedButton()
+        
+        if clicked == btn_replace:
+            self._apply_preset(preset, replace=True)
+        elif clicked == btn_merge:
+            self._apply_preset(preset, replace=False)
+    
+    def _apply_preset(self, preset, replace: bool = True):
+        """Apply a decoded preset to the mod lists."""
+        # Build mod lookup
+        mod_by_id = {mod.package_id.lower(): mod for mod in self.all_mods}
+        
+        if replace:
+            self.available_list.clear_mods()
+            self.active_list.clear_mods()
+            
+            active_ids_set = set(pid.lower() for pid in preset.package_ids)
+            
+            found_count = 0
+            for pid in preset.package_ids:
+                mod = mod_by_id.get(pid.lower())
+                if mod:
+                    mod.is_active = True
+                    self.active_list.add_mod(mod)
+                    found_count += 1
+            
+            for mod in self.all_mods:
+                if mod.package_id.lower() not in active_ids_set:
+                    mod.is_active = False
+                    self.available_list.add_mod(mod)
+            
+            status_msg = f"Applied preset '{preset.name}': {found_count} mods"
+        else:
+            current_active = {mod.package_id.lower() for mod in self.active_list.get_all_mods()}
+            added_count = 0
+            
+            for pid in preset.package_ids:
+                pid_lower = pid.lower()
+                if pid_lower not in current_active:
+                    mod = mod_by_id.get(pid_lower)
+                    if mod:
+                        self.available_list.remove_mod(mod)
+                        mod.is_active = True
+                        self.active_list.add_mod(mod)
+                        added_count += 1
+            
+            status_msg = f"Merged preset '{preset.name}': added {added_count} mods"
+        
+        # Handle workshop IDs
+        if preset.workshop_ids:
+            reply = QMessageBox.question(
+                self, "Download Workshop Mods?",
+                f"The preset contains {len(preset.workshop_ids)} Workshop IDs.\n\nAdd to download queue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                if hasattr(self, 'workshop_browser') and self.workshop_browser:
+                    for wid in preset.workshop_ids:
+                        self.workshop_browser.browser._add_to_queue(wid)
+                    self.main_tabs.setCurrentIndex(1)
+        
+        self._update_counts()
+        self._check_conflicts()
+        self.status_bar.showMessage(status_msg)
+    
+    def _copy_to_clipboard(self, text: str, message: str = "Copied!"):
+        """Copy text to clipboard and show status message."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self.status_bar.showMessage(message)
     
     def _import_config(self):
         """Import configuration from a file."""
