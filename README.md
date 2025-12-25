@@ -223,6 +223,4 @@ If you fork or distribute this code, you must:
 
 **⭐ Star this repo if you find it useful!**
 
-Made with ❤️ for the RimWorld community
-
 </div>
