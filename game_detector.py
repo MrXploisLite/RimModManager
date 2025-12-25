@@ -541,8 +541,8 @@ class GameDetector:
             return
         
         # ==================== LINUX ====================
-        # For custom installations, check if there's a proton prefix nearby
-        if install.install_type == InstallationType.CUSTOM and not install.proton_prefix:
+        # For custom/standalone installations, check if there's a proton prefix nearby
+        if install.install_type in (InstallationType.CUSTOM, InstallationType.STANDALONE) and not install.proton_prefix:
             # Try to find proton prefix from game path
             # Check if game is in a Wine/Proton prefix structure
             game_path_str = str(install.path)
@@ -553,93 +553,103 @@ class GameDetector:
                     install.proton_prefix = Path(game_path_str[:prefix_idx])
                     install.is_windows_build = True
         
+        # Collect all possible prefixes to check
+        prefixes_to_check = []
+        
+        if install.proton_prefix:
+            prefixes_to_check.append(install.proton_prefix)
+        
+        # For Windows builds, also check ALL Steam compatdata prefixes
+        # (game might be standalone but using config from a different Proton prefix)
         if install.is_windows_build:
-            # Windows build - check multiple possible prefix locations
-            prefixes_to_check = []
-            
-            if install.proton_prefix:
-                prefixes_to_check.append(install.proton_prefix)
-            
-            # Also check Steam compatdata
             steam_paths = [
                 Path.home() / ".local/share/Steam",
                 Path.home() / ".steam/steam",
+                Path.home() / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
             ]
+            
             for steam_path in steam_paths:
-                compatdata = steam_path / "steamapps/compatdata" / self.RIMWORLD_APPID / "pfx"
+                compatdata = steam_path / "steamapps/compatdata"
                 if compatdata.exists():
-                    prefixes_to_check.append(compatdata)
+                    try:
+                        # Check ALL compatdata folders, not just RimWorld's AppID
+                        for appid_folder in compatdata.iterdir():
+                            if appid_folder.is_dir():
+                                pfx = appid_folder / "pfx"
+                                if pfx.exists() and pfx not in prefixes_to_check:
+                                    prefixes_to_check.append(pfx)
+                    except PermissionError:
+                        pass
+        
+        # Search for config in all prefixes
+        for prefix in prefixes_to_check:
+            if not prefix or not prefix.exists():
+                continue
             
-            # Search patterns for config/save folders
-            search_patterns = [
-                "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios",
-                "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios",
-            ]
-            
-            for prefix in prefixes_to_check:
-                if not prefix or not prefix.exists():
-                    continue
-                    
-                # Try exact path first
-                base = prefix / "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios"
-                if base.exists():
-                    install.save_path = base / "Saves"
-                    install.config_path = base / "Config"
+            # Try exact path first
+            base = prefix / "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios"
+            if base.exists():
+                install.save_path = base / "Saves"
+                install.config_path = base / "Config"
+                if not install.proton_prefix:
                     install.proton_prefix = prefix
-                    return
-                
-                # Try to find folder with rimworld in name
-                alt_base = prefix / "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios"
-                if alt_base.exists():
-                    try:
-                        for folder in alt_base.iterdir():
-                            if folder.is_dir() and "rimworld" in folder.name.lower():
-                                install.save_path = folder / "Saves"
-                                install.config_path = folder / "Config"
+                return
+            
+            # Try to find folder with rimworld in name
+            alt_base = prefix / "drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios"
+            if alt_base.exists():
+                try:
+                    for folder in alt_base.iterdir():
+                        if folder.is_dir() and "rimworld" in folder.name.lower():
+                            install.save_path = folder / "Saves"
+                            install.config_path = folder / "Config"
+                            if not install.proton_prefix:
                                 install.proton_prefix = prefix
-                                return
-                    except PermissionError:
-                        continue
-                
-                # Try other user folders (not just steamuser)
-                users_path = prefix / "drive_c/users"
-                if users_path.exists():
-                    try:
-                        for user_folder in users_path.iterdir():
-                            if user_folder.is_dir() and user_folder.name not in ("Public", "Default"):
-                                ludeon_path = user_folder / "AppData/LocalLow/Ludeon Studios"
-                                if ludeon_path.exists():
-                                    for folder in ludeon_path.iterdir():
-                                        if folder.is_dir() and "rimworld" in folder.name.lower():
-                                            install.save_path = folder / "Saves"
-                                            install.config_path = folder / "Config"
+                            return
+                except PermissionError:
+                    continue
+            
+            # Try other user folders (not just steamuser)
+            users_path = prefix / "drive_c/users"
+            if users_path.exists():
+                try:
+                    for user_folder in users_path.iterdir():
+                        if user_folder.is_dir() and user_folder.name not in ("Public", "Default"):
+                            ludeon_path = user_folder / "AppData/LocalLow/Ludeon Studios"
+                            if ludeon_path.exists():
+                                for folder in ludeon_path.iterdir():
+                                    if folder.is_dir() and "rimworld" in folder.name.lower():
+                                        install.save_path = folder / "Saves"
+                                        install.config_path = folder / "Config"
+                                        if not install.proton_prefix:
                                             install.proton_prefix = prefix
-                                            return
-                    except PermissionError:
-                        continue
+                                        return
+                except PermissionError:
+                    continue
         
         # Native Linux build - standard Unity path
-        native_paths = [
-            Path.home() / ".config/unity3d/Ludeon Studios/RimWorld by Ludeon Studios",
-            Path.home() / ".config/unity3d/Ludeon Studios",
-        ]
-        
-        for native_base in native_paths:
-            if native_base.exists():
-                if native_base.name == "RimWorld by Ludeon Studios":
-                    install.save_path = native_base / "Saves"
-                    install.config_path = native_base / "Config"
-                    return
-                else:
-                    # Search for rimworld folder
-                    try:
-                        for folder in native_base.iterdir():
-                            if folder.is_dir() and "rimworld" in folder.name.lower():
-                                install.save_path = folder / "Saves"
-                                install.config_path = folder / "Config"
-                                return
-                    except PermissionError:
-                        continue
+        if not install.is_windows_build:
+            native_paths = [
+                Path.home() / ".config/unity3d/Ludeon Studios/RimWorld by Ludeon Studios",
+                Path.home() / ".config/unity3d/Ludeon Studios",
+            ]
+            
+            for native_base in native_paths:
+                if native_base.exists():
+                    if native_base.name == "RimWorld by Ludeon Studios":
+                        install.save_path = native_base / "Saves"
+                        install.config_path = native_base / "Config"
+                        return
+                    else:
+                        # Search for rimworld folder
+                        try:
+                            for folder in native_base.iterdir():
+                                if folder.is_dir() and "rimworld" in folder.name.lower():
+                                    install.save_path = folder / "Saves"
+                                    install.config_path = folder / "Config"
+                                    return
+                        except PermissionError:
+                            continue
     
     def add_custom_path(self, path: str) -> Optional[RimWorldInstallation]:
         """
