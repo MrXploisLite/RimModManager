@@ -573,6 +573,14 @@ class WorkshopBrowser(QWidget):
         """Update the set of already-downloaded mod IDs."""
         self.downloaded_ids = ids
     
+    def refresh_downloaded_ids(self, workshop_path: Path):
+        """Refresh downloaded IDs from disk."""
+        self.downloaded_ids.clear()
+        if workshop_path.exists():
+            for item in workshop_path.iterdir():
+                if item.is_dir() and item.name.isdigit():
+                    self.downloaded_ids.add(item.name)
+    
     def mark_downloaded(self, workshop_id: str):
         """Mark a mod as downloaded."""
         self.downloaded_ids.add(workshop_id)
@@ -583,6 +591,28 @@ class WorkshopBrowser(QWidget):
             if isinstance(item, DownloadQueueItem):
                 if item.workshop_item.workshop_id == workshop_id:
                     item.update_display("✓ Downloaded")
+    
+    def clear_completed(self):
+        """Remove all completed/downloaded items from queue."""
+        items_to_remove = []
+        for i in range(self.queue_list.count()):
+            item = self.queue_list.item(i)
+            if isinstance(item, DownloadQueueItem):
+                wid = item.workshop_item.workshop_id
+                if wid in self.downloaded_ids:
+                    items_to_remove.append(i)
+        
+        # Remove in reverse order to avoid index shifting
+        for i in reversed(items_to_remove):
+            item = self.queue_list.item(i)
+            if isinstance(item, DownloadQueueItem):
+                self.queue_ids.discard(item.workshop_item.workshop_id)
+                self.queue = [q for q in self.queue if q.workshop_id != item.workshop_item.workshop_id]
+            self.queue_list.takeItem(i)
+        
+        self._update_queue_count()
+        if items_to_remove:
+            self.status_label.setText(f"Cleared {len(items_to_remove)} downloaded item(s)")
     
     def show_progress(self, current: int, total: int, status: str = ""):
         """Show download progress."""
