@@ -2110,13 +2110,11 @@ class MainWindow(QMainWindow):
         # Auto-refresh the mod list
         self._scan_mods()
         
-        # Update workshop browser downloaded IDs
+        # Update workshop browser - refresh downloaded IDs from disk and clear completed
         if self.workshop_browser:
             download_path_obj = self.config.get_default_workshop_path()
-            if download_path_obj.exists():
-                for item in download_path_obj.iterdir():
-                    if item.is_dir() and item.name.isdigit():
-                        self.workshop_browser.mark_downloaded(item.name)
+            self.workshop_browser.refresh_downloaded_ids(download_path_obj)
+            self.workshop_browser.clear_completed()
         
         # Switch to Mod Manager tab to show new mods
         self.main_tabs.setCurrentIndex(0)
