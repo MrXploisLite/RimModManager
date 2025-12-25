@@ -1,0 +1,5 @@
+# RimWorld Mod Manager Dependencies
+# Install with: pip install -r requirements.txt
+# Or on Arch Linux: sudo pacman -S python-pyqt6
+
+PyQt6>=6.4.0

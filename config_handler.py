@@ -1,0 +1,216 @@
+"""
+Configuration Handler for RimWorld Mod Manager
+XDG-compliant configuration storage at ~/.config/rimworld-mod-manager/
+"""
+
+import json
+import os
+from pathlib import Path
+from typing import Any, Optional
+from dataclasses import dataclass, field, asdict
+
+
+@dataclass
+class AppConfig:
+    """Application configuration data class."""
+    # Last selected game installation path
+    last_installation: str = ""
+    
+    # Custom mod source directories (user can add multiple)
+    mod_source_paths: list[str] = field(default_factory=list)
+    
+    # Custom game installation paths (user-defined)
+    custom_game_paths: list[str] = field(default_factory=list)
+    
+    # Last used modlist file path
+    last_modlist_path: str = ""
+    
+    # Window geometry
+    window_width: int = 1200
+    window_height: int = 800
+    window_x: int = -1
+    window_y: int = -1
+    
+    # SteamCMD path (if not in PATH)
+    steamcmd_path: str = ""
+    
+    # Workshop download directory
+    workshop_download_path: str = ""
+    
+    # Remember splitter positions
+    splitter_sizes: list[int] = field(default_factory=lambda: [300, 600, 300])
+    
+    # Dark mode preference (None = system, True = dark, False = light)
+    dark_mode: Optional[bool] = None
+
+
+class ConfigHandler:
+    """
+    Handles loading, saving, and accessing application configuration.
+    Uses XDG Base Directory specification for Linux.
+    """
+    
+    CONFIG_DIR_NAME = "rimworld-mod-manager"
+    CONFIG_FILE_NAME = "config.json"
+    MODLISTS_DIR_NAME = "modlists"
+    
+    def __init__(self):
+        self._config_dir = self._get_config_dir()
+        self._config_file = self._config_dir / self.CONFIG_FILE_NAME
+        self._modlists_dir = self._config_dir / self.MODLISTS_DIR_NAME
+        self._config: AppConfig = AppConfig()
+        
+        # Ensure directories exist
+        self._ensure_directories()
+        
+        # Load existing config
+        self.load()
+    
+    def _get_config_dir(self) -> Path:
+        """Get XDG-compliant config directory."""
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        if xdg_config_home:
+            base = Path(xdg_config_home)
+        else:
+            base = Path.home() / ".config"
+        return base / self.CONFIG_DIR_NAME
+    
+    def _ensure_directories(self) -> None:
+        """Create config directories if they don't exist."""
+        self._config_dir.mkdir(parents=True, exist_ok=True)
+        self._modlists_dir.mkdir(parents=True, exist_ok=True)
+    
+    @property
+    def config_dir(self) -> Path:
+        """Return the configuration directory path."""
+        return self._config_dir
+    
+    @property
+    def modlists_dir(self) -> Path:
+        """Return the modlists directory path."""
+        return self._modlists_dir
+    
+    @property
+    def config(self) -> AppConfig:
+        """Return the current configuration."""
+        return self._config
+    
+    def load(self) -> bool:
+        """
+        Load configuration from file.
+        Returns True if loaded successfully, False otherwise.
+        """
+        if not self._config_file.exists():
+            return False
+        
+        try:
+            with open(self._config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Update config with loaded values, keeping defaults for missing keys
+            for key, value in data.items():
+                if hasattr(self._config, key):
+                    setattr(self._config, key, value)
+            
+            return True
+        except (json.JSONDecodeError, IOError, PermissionError) as e:
+            print(f"Warning: Failed to load config: {e}")
+            return False
+    
+    def save(self) -> bool:
+        """
+        Save configuration to file.
+        Returns True if saved successfully, False otherwise.
+        """
+        try:
+            with open(self._config_file, 'w', encoding='utf-8') as f:
+                json.dump(asdict(self._config), f, indent=2)
+            return True
+        except (IOError, PermissionError) as e:
+            print(f"Error: Failed to save config: {e}")
+            return False
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a configuration value by key."""
+        return getattr(self._config, key, default)
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set a configuration value and save."""
+        if hasattr(self._config, key):
+            setattr(self._config, key, value)
+            self.save()
+    
+    def add_mod_source_path(self, path: str) -> bool:
+        """Add a mod source directory if not already present."""
+        if path and path not in self._config.mod_source_paths:
+            self._config.mod_source_paths.append(path)
+            self.save()
+            return True
+        return False
+    
+    def remove_mod_source_path(self, path: str) -> bool:
+        """Remove a mod source directory."""
+        if path in self._config.mod_source_paths:
+            self._config.mod_source_paths.remove(path)
+            self.save()
+            return True
+        return False
+    
+    def add_custom_game_path(self, path: str) -> bool:
+        """Add a custom game installation path."""
+        if path and path not in self._config.custom_game_paths:
+            self._config.custom_game_paths.append(path)
+            self.save()
+            return True
+        return False
+    
+    def remove_custom_game_path(self, path: str) -> bool:
+        """Remove a custom game installation path."""
+        if path in self._config.custom_game_paths:
+            self._config.custom_game_paths.remove(path)
+            self.save()
+            return True
+        return False
+    
+    def get_default_workshop_path(self) -> Path:
+        """Get default path for workshop downloads."""
+        if self._config.workshop_download_path:
+            return Path(self._config.workshop_download_path)
+        
+        # Default to a directory in user's home
+        default = Path.home() / "RimWorld_Workshop_Mods"
+        return default
+    
+    def save_modlist(self, name: str, mod_ids: list[str], active_mods: list[str]) -> Path:
+        """
+        Save a modlist to the modlists directory.
+        Returns the path to the saved file.
+        """
+        modlist_data = {
+            "name": name,
+            "mod_ids": mod_ids,
+            "active_mods": active_mods
+        }
+        
+        # Sanitize filename
+        safe_name = "".join(c for c in name if c.isalnum() or c in "._- ")
+        filename = f"{safe_name}.json"
+        filepath = self._modlists_dir / filename
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(modlist_data, f, indent=2)
+        
+        return filepath
+    
+    def load_modlist(self, filepath: Path) -> Optional[dict]:
+        """Load a modlist from file."""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Failed to load modlist: {e}")
+            return None
+    
+    def list_modlists(self) -> list[Path]:
+        """List all saved modlists."""
+        return list(self._modlists_dir.glob("*.json"))

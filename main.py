@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""
+RimWorld Mod Manager for Arch Linux
+A universal mod manager supporting all common RimWorld installation types on Linux.
+
+Author: RimWorld Linux Community
+License: MIT
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Ensure the project directory is in the path
+project_dir = Path(__file__).parent.absolute()
+if str(project_dir) not in sys.path:
+    sys.path.insert(0, str(project_dir))
+
+
+def check_dependencies() -> bool:
+    """Check if all required dependencies are available."""
+    missing = []
+    
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
+        missing.append("PyQt6")
+    
+    if missing:
+        print("Missing required dependencies:")
+        for dep in missing:
+            print(f"  - {dep}")
+        print("\nInstall with:")
+        print("  pip install PyQt6")
+        print("  # or on Arch:")
+        print("  sudo pacman -S python-pyqt6")
+        return False
+    
+    return True
+
+
+def setup_environment():
+    """Set up environment variables and paths."""
+    # Ensure XDG directories exist
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+    config_dir = Path(xdg_config) / "rimworld-mod-manager"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Set Qt environment for better theme integration
+    if "QT_QPA_PLATFORMTHEME" not in os.environ:
+        # Try to detect KDE/Qt theme
+        if os.environ.get("KDE_FULL_SESSION"):
+            os.environ["QT_QPA_PLATFORMTHEME"] = "kde"
+        elif os.environ.get("DESKTOP_SESSION", "").lower() in ("gnome", "ubuntu"):
+            os.environ["QT_QPA_PLATFORMTHEME"] = "gnome"
+
+
+def main():
+    """Main application entry point."""
+    # Check dependencies first
+    if not check_dependencies():
+        sys.exit(1)
+    
+    # Set up environment
+    setup_environment()
+    
+    # Import after dependency check
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QPalette, QColor
+    
+    from ui.main_window import MainWindow
+    
+    # Create application
+    app = QApplication(sys.argv)
+    app.setApplicationName("RimWorld Mod Manager")
+    app.setApplicationDisplayName("RimWorld Mod Manager")
+    app.setOrganizationName("RimWorld Linux")
+    app.setOrganizationDomain("rimworld.linux")
+    
+    # Set up style
+    app.setStyle("Fusion")
+    
+    # Check if system prefers dark mode
+    is_dark = app.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    
+    if is_dark:
+        # Apply dark palette
+        dark_palette = QPalette()
+        dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+        dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+        dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
+        
+        # Disabled colors
+        dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(127, 127, 127))
+        dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(127, 127, 127))
+        dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
+        
+        app.setPalette(dark_palette)
+    
+    # Create and show main window
+    window = MainWindow()
+    window.show()
+    
+    # Run the application
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
