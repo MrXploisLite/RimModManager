@@ -423,7 +423,13 @@ After installation, restart this application.
             
             return unique_ids
             
-        except Exception as e:
+        except urllib.error.URLError as e:
+            print(f"Network error parsing collection: {e}")
+            return []
+        except urllib.error.HTTPError as e:
+            print(f"HTTP error parsing collection: {e.code}")
+            return []
+        except (OSError, ValueError) as e:
             print(f"Failed to parse collection: {e}")
             return []
     

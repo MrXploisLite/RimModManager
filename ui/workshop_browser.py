@@ -531,6 +531,11 @@ class WorkshopDownloadDialog(QWidget):
         
         self.browser.show_progress(0, len(workshop_ids), "Starting downloads...")
         
+        # Cancel any existing download thread
+        if hasattr(self, '_download_thread') and self._download_thread and self._download_thread.isRunning():
+            self._download_thread.cancel()
+            self._download_thread.wait(500)
+        
         # Download in thread
         self._download_thread = DownloadThread(self.downloader, workshop_ids)
         self._download_thread.progress.connect(self._on_progress)
@@ -560,22 +565,39 @@ class DownloadThread(QThread):
         super().__init__()
         self.downloader = downloader
         self.workshop_ids = workshop_ids
+        self._cancelled = False
+    
+    def cancel(self):
+        """Cancel the download."""
+        self._cancelled = True
+        if self.downloader:
+            self.downloader.cancel_downloads()
     
     def run(self):
         success = 0
         failed = 0
         total = len(self.workshop_ids)
         
-        for i, wid in enumerate(self.workshop_ids):
-            self.progress.emit(i, total, wid, "Downloading")
-            
-            result = self.downloader.download_single(wid)
-            
-            if result:
-                success += 1
-                self.progress.emit(i + 1, total, wid, "Complete")
-            else:
-                failed += 1
-                self.progress.emit(i + 1, total, wid, "Failed")
-        
-        self.finished.emit(success, failed)
+        try:
+            for i, wid in enumerate(self.workshop_ids):
+                if self._cancelled:
+                    break
+                    
+                self.progress.emit(i, total, wid, "Downloading")
+                
+                result = self.downloader.download_single(wid)
+                
+                if self._cancelled:
+                    break
+                
+                if result:
+                    success += 1
+                    self.progress.emit(i + 1, total, wid, "Complete")
+                else:
+                    failed += 1
+                    self.progress.emit(i + 1, total, wid, "Failed")
+        except (OSError, IOError) as e:
+            failed += 1
+            self.progress.emit(total, total, "error", f"Error: {e}")
+        finally:
+            self.finished.emit(success, failed)

@@ -31,13 +31,21 @@ class UpdateCheckWorker(QThread):
         super().__init__()
         self.checker = checker
         self.mods = mods
+        self._cancelled = False
+    
+    def cancel(self):
+        """Cancel the update check."""
+        self._cancelled = True
     
     def run(self):
         try:
-            results = self.checker.check_updates(self.mods)
-            self.finished.emit(results)
-        except Exception as e:
-            self.error.emit(str(e))
+            if not self._cancelled:
+                results = self.checker.check_updates(self.mods)
+                if not self._cancelled:
+                    self.finished.emit(results)
+        except (OSError, IOError, ValueError) as e:
+            if not self._cancelled:
+                self.error.emit(str(e))
 
 
 class UpdateListItem(QListWidgetItem):
@@ -163,11 +171,20 @@ class ModUpdateCheckerWidget(QWidget):
             return
         
         mods = self._mods_getter()
+        if not mods:
+            self.status_label.setText("No mods found to check.")
+            return
+            
         workshop_mods = [m for m in mods if m.steam_workshop_id]
         
         if not workshop_mods:
             self.status_label.setText("No Workshop mods found to check.")
             return
+        
+        # Cancel any existing worker
+        if self._worker and self._worker.isRunning():
+            self._worker.cancel()
+            self._worker.wait(500)
         
         self.btn_check.setEnabled(False)
         self.progress_bar.setVisible(True)

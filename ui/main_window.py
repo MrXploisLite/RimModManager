@@ -41,14 +41,25 @@ class ScanWorker(QThread):
         self.paths = paths
         self.parser = parser
         self.source = source
+        self._cancelled = False
+    
+    def cancel(self):
+        """Cancel the scan operation."""
+        self._cancelled = True
     
     def run(self):
         all_mods = []
-        for path in self.paths:
-            self.progress.emit(f"Scanning {path.name}...")
-            mods = self.parser.scan_directory(path, self.source)
-            all_mods.extend(mods)
-        self.finished.emit(all_mods)
+        try:
+            for path in self.paths:
+                if self._cancelled:
+                    break
+                self.progress.emit(f"Scanning {path.name}...")
+                mods = self.parser.scan_directory(path, self.source)
+                all_mods.extend(mods)
+        except (OSError, PermissionError) as e:
+            self.progress.emit(f"Error scanning: {e}")
+        finally:
+            self.finished.emit(all_mods)
 
 
 class DownloadWorker(QThread):
@@ -61,26 +72,45 @@ class DownloadWorker(QThread):
         super().__init__()
         self.downloader = downloader
         self.workshop_ids = workshop_ids
+        self._cancelled = False
+    
+    def cancel(self):
+        """Cancel the download operation."""
+        self._cancelled = True
+        if self.downloader:
+            self.downloader.cancel_downloads()
     
     def run(self):
-        for wid in self.workshop_ids:
-            task = DownloadTask(workshop_id=wid)
-            
-            # Hook up signals
-            def on_progress(t):
-                self.progress.emit(t)
-            
-            self.downloader.on_progress = on_progress
-            
-            result = self.downloader.download_single(wid)
-            
-            if result:
-                task.status = DownloadStatus.COMPLETE
-                task.output_path = result
-                self.finished.emit(task)
-            else:
-                task.status = DownloadStatus.FAILED
-                self.error.emit(task, task.error_message or "Download failed")
+        try:
+            for wid in self.workshop_ids:
+                if self._cancelled:
+                    break
+                    
+                task = DownloadTask(workshop_id=wid)
+                
+                # Hook up signals - use weak reference pattern
+                def on_progress(t, self_ref=self):
+                    if not self_ref._cancelled:
+                        self_ref.progress.emit(t)
+                
+                self.downloader.on_progress = on_progress
+                
+                result = self.downloader.download_single(wid)
+                
+                if self._cancelled:
+                    break
+                
+                if result:
+                    task.status = DownloadStatus.COMPLETE
+                    task.output_path = result
+                    self.finished.emit(task)
+                else:
+                    task.status = DownloadStatus.FAILED
+                    self.error.emit(task, task.error_message or "Download failed")
+        except (OSError, IOError) as e:
+            task = DownloadTask(workshop_id="unknown")
+            task.status = DownloadStatus.FAILED
+            self.error.emit(task, str(e))
 
 
 class PathsDialog(QDialog):
@@ -1867,6 +1897,20 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event."""
+        # Cancel any running workers
+        if self.scan_worker and self.scan_worker.isRunning():
+            self.scan_worker.cancel()
+            self.scan_worker.wait(1000)  # Wait up to 1 second
+        
+        if self.download_worker and self.download_worker.isRunning():
+            self.download_worker.cancel()
+            self.download_worker.wait(1000)
+        
+        # Clean up download manager worker
+        if hasattr(self, 'download_manager') and self.download_manager:
+            if self.download_manager.is_downloading():
+                self.download_manager._cancel_downloads()
+        
         # Save window geometry
         self.config.config.window_width = self.width()
         self.config.config.window_height = self.height()

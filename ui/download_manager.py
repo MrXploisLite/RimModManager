@@ -172,10 +172,16 @@ class LiveDownloadWorker(QThread):
         self.workshop_ids = workshop_ids
         self.download_path = download_path
         self._cancelled = False
+        self._process = None
     
     def cancel(self):
         """Cancel the download."""
         self._cancelled = True
+        if self._process:
+            try:
+                self._process.terminate()
+            except (OSError, ProcessLookupError):
+                pass
     
     def run(self):
         success = 0
@@ -257,7 +263,7 @@ class LiveDownloadWorker(QThread):
             self.log_output.emit(f"{'='*50}\n")
             
             try:
-                process = subprocess.Popen(
+                self._process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -270,10 +276,11 @@ class LiveDownloadWorker(QThread):
                 logged_in = False
                 
                 # Stream output with filtering
-                for line in process.stdout:
-                    line = line.rstrip()
-                    if not line:
-                        continue
+                if self._process.stdout:
+                    for line in self._process.stdout:
+                        line = line.rstrip()
+                        if not line:
+                            continue
                     
                     # Filter out noisy/repetitive lines
                     skip_patterns = [
@@ -336,13 +343,13 @@ class LiveDownloadWorker(QThread):
                         self.log_output.emit(f"  {clean_line}")
                     
                     if self._cancelled:
-                        process.terminate()
+                        self._process.terminate()
                         return results
                 
-                process.wait()
+                self._process.wait()
                 
-                if process.returncode != 0:
-                    self.log_output.emit(f"\n[WARNING] SteamCMD exited with code {process.returncode}")
+                if self._process.returncode != 0:
+                    self.log_output.emit(f"\n[WARNING] SteamCMD exited with code {self._process.returncode}")
                 
                 # Move downloaded mods to final location
                 self.log_output.emit(f"\n[INFO] Moving mods to {self.download_path}...")
