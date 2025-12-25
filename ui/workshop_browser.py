@@ -125,9 +125,42 @@ class WorkshopBrowser(QWidget):
         
         # Web view or fallback
         if HAS_WEBENGINE:
+            from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEngineProfile
+            
             self.web_view = QWebEngineView()
+            
+            # Performance optimizations
+            settings = self.web_view.settings()
+            settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, False)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, False)  # Disable WebGL for performance
+            settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, False)
+            settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, True)  # Don't autoplay
+            
+            # Set custom user agent to avoid Steam blocking
+            profile = self.web_view.page().profile()
+            profile.setHttpUserAgent(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+            
+            # Enable disk cache for faster loading
+            profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+            
             self.web_view.setUrl(QUrl(self.WORKSHOP_URL))
             browser_layout.addWidget(self.web_view, 1)
+            
+            # Loading indicator
+            self.loading_label = QLabel("⏳ Loading...")
+            self.loading_label.setStyleSheet("color: #888; padding: 4px;")
+            self.loading_label.hide()
+            browser_layout.addWidget(self.loading_label)
+            
+            # Connect loading signals
+            self.web_view.loadStarted.connect(lambda: self.loading_label.show())
+            self.web_view.loadFinished.connect(self._on_load_finished)
             
             # Connect navigation
             self.btn_back.clicked.connect(self.web_view.back)
@@ -277,6 +310,12 @@ class WorkshopBrowser(QWidget):
         else:
             import webbrowser
             webbrowser.open(url)
+    
+    def _on_load_finished(self, ok: bool):
+        """Handle page load completion."""
+        self.loading_label.hide()
+        if not ok:
+            self.status_label.setText("⚠️ Page failed to load - Steam may be having issues")
     
     def _on_url_changed(self, url: QUrl):
         """Handle URL change in web view."""
