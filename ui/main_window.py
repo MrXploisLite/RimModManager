@@ -365,13 +365,23 @@ class GameLaunchDialog(QDialog):
         self._log(f"[INFO] Game path: {game_path}", "#74c0fc")
         self._log(f"[INFO] Windows build: {is_windows}", "#74c0fc")
         
-        # Find executable
+        # Find executable based on platform and build type
+        import platform
+        system = platform.system().lower()
+        
         if is_windows:
             executables = [
                 game_path / "RimWorldWin64.exe",
                 game_path / "RimWorldWin.exe",
             ]
-        else:
+        elif system == 'darwin':
+            executables = [
+                game_path / "RimWorldMac.app",
+                game_path / "RimWorld.app",
+                game_path / "RimWorldMac",
+                game_path / "RimWorld",
+            ]
+        else:  # Linux
             executables = [
                 game_path / "RimWorldLinux",
                 game_path / "RimWorld",
@@ -529,7 +539,32 @@ class GameLaunchDialog(QDialog):
                 self.status_label.setText("✅ Launched!")
                 
             elif system == 'darwin':  # macOS
-                if exe_path.suffix == '.app' or '.app' in str(exe_path):
+                if is_windows:
+                    # Windows build on macOS - need Wine or CrossOver
+                    import shutil
+                    if shutil.which("wine") or shutil.which("wine64"):
+                        wine_cmd = shutil.which("wine64") or shutil.which("wine")
+                        self._log(f"[INFO] Running Windows build with Wine: {wine_cmd}", "#74c0fc")
+                        
+                        env = os.environ.copy()
+                        if self.installation.proton_prefix:
+                            env["WINEPREFIX"] = str(self.installation.proton_prefix)
+                            self._log(f"[INFO] WINEPREFIX: {self.installation.proton_prefix}", "#74c0fc")
+                        
+                        subprocess.Popen(
+                            [wine_cmd, str(exe_path)],
+                            cwd=str(game_path),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            env=env
+                        )
+                        self._log(f"[OK] Game started with Wine!", "#69db7c")
+                        self.status_label.setText("✅ Launched with Wine!")
+                    else:
+                        self._log(f"[ERROR] Wine not found!", "#ff6b6b")
+                        self._log(f"[TIP] Install Wine via: brew install --cask wine-stable", "#ffd43b")
+                        self.status_label.setText("❌ Wine not installed")
+                elif exe_path.suffix == '.app' or '.app' in str(exe_path):
                     # macOS app bundle
                     self._log(f"[INFO] Running macOS app bundle", "#74c0fc")
                     subprocess.Popen(
@@ -537,15 +572,19 @@ class GameLaunchDialog(QDialog):
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
+                    self._log(f"[OK] Game started!", "#69db7c")
+                    self.status_label.setText("✅ Launched!")
                 else:
+                    # Native macOS binary
+                    self._log(f"[INFO] Running native macOS executable", "#74c0fc")
                     subprocess.Popen(
                         [str(exe_path)],
                         cwd=str(game_path),
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                self._log(f"[OK] Game started!", "#69db7c")
-                self.status_label.setText("✅ Launched!")
+                    self._log(f"[OK] Game started!", "#69db7c")
+                    self.status_label.setText("✅ Launched!")
                 
             else:  # Linux
                 if is_windows:
