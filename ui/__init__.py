@@ -20,6 +20,11 @@ from .tools_widgets import (
     ConflictResolverWidget,
     EnhancedModInfoWidget
 )
+from .graph_view import (
+    ConflictGraphDialog,
+    ModGraphView,
+    EdgeType
+)
 
 __all__ = [
     'ModListItem',
@@ -41,4 +46,7 @@ __all__ = [
     'ModUpdateCheckerWidget',
     'ConflictResolverWidget',
     'EnhancedModInfoWidget',
+    'ConflictGraphDialog',
+    'ModGraphView',
+    'EdgeType',
 ]
