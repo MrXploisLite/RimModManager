@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QApplication
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QIcon, QColor
 
 from config_handler import ConfigHandler
 from game_detector import GameDetector, RimWorldInstallation, InstallationType
