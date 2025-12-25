@@ -11,6 +11,7 @@ from .mod_widgets import (
 )
 from .main_window import MainWindow
 from .workshop_browser import WorkshopBrowser, WorkshopDownloadDialog
+from .download_manager import DownloadLogWidget, SteamCMDChecker
 
 __all__ = [
     'ModListItem',
@@ -21,4 +22,6 @@ __all__ = [
     'MainWindow',
     'WorkshopBrowser',
     'WorkshopDownloadDialog',
+    'DownloadLogWidget',
+    'SteamCMDChecker',
 ]

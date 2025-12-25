@@ -41,6 +41,12 @@ def check_dependencies() -> bool:
 
 def setup_environment():
     """Set up environment variables and paths."""
+    # Suppress Qt portal warnings (harmless but noisy)
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.services=false"
+    
+    # Suppress JS console errors from web engine
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-logging"
+    
     # Ensure XDG directories exist
     xdg_config = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
     config_dir = Path(xdg_config) / "rimworld-mod-manager"
@@ -109,8 +115,13 @@ def main():
         app.setPalette(dark_palette)
     
     # Create and show main window
-    window = MainWindow()
-    window.show()
+    try:
+        window = MainWindow()
+        window.show()
+    except Exception as e:
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(None, "Startup Error", f"Failed to start application:\n{e}")
+        return 1
     
     # Run the application
     return app.exec()

@@ -27,6 +27,7 @@ from ui.mod_widgets import (
     DraggableModList, ModDetailsPanel, ModListControls, ConflictWarningWidget
 )
 from ui.workshop_browser import WorkshopBrowser, WorkshopDownloadDialog
+from ui.download_manager import DownloadLogWidget, SteamCMDChecker, LiveDownloadWorker
 
 
 class ScanWorker(QThread):
@@ -467,6 +468,17 @@ class MainWindow(QMainWindow):
         workshop_layout.addWidget(self.workshop_placeholder)
         
         self.main_tabs.addTab(self.workshop_tab, "🔧 Workshop Browser")
+        
+        # ===== TAB 3: Download Manager with Live Logs =====
+        self.download_tab = QWidget()
+        download_layout = QVBoxLayout(self.download_tab)
+        download_layout.setContentsMargins(4, 4, 4, 4)
+        
+        self.download_manager = DownloadLogWidget()
+        self.download_manager.download_complete.connect(self._on_downloads_complete)
+        download_layout.addWidget(self.download_manager)
+        
+        self.main_tabs.addTab(self.download_tab, "📥 Downloads")
         
         main_layout.addWidget(self.main_tabs, 1)
         
@@ -984,19 +996,48 @@ class MainWindow(QMainWindow):
             self.workshop_browser.url_input.setFocus()
     
     def _start_workshop_download(self, workshop_ids: list[str]):
-        """Start downloading workshop mods."""
-        if not self.downloader:
+        """Start downloading workshop mods with live logging."""
+        if not workshop_ids:
             return
         
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(workshop_ids))
-        self.progress_bar.setValue(0)
+        # Check SteamCMD availability
+        steamcmd_path = SteamCMDChecker.find_steamcmd()
+        if not steamcmd_path:
+            QMessageBox.warning(
+                self, "SteamCMD Not Found",
+                f"SteamCMD is required to download mods.\n\n"
+                f"Install with:\n{SteamCMDChecker.get_install_command()}"
+            )
+            return
         
-        self.download_worker = DownloadWorker(self.downloader, workshop_ids)
-        self.download_worker.progress.connect(self._on_download_progress)
-        self.download_worker.finished.connect(self._on_download_finished)
-        self.download_worker.error.connect(self._on_download_error)
-        self.download_worker.start()
+        # Switch to Downloads tab
+        self.main_tabs.setCurrentIndex(2)
+        
+        # Get download path
+        download_path = self.config.get_default_workshop_path()
+        
+        # Start downloads with live logging
+        self.download_manager.start_downloads(steamcmd_path, workshop_ids, download_path)
+        self.status_bar.showMessage(f"Downloading {len(workshop_ids)} mod(s)...")
+    
+    def _on_downloads_complete(self):
+        """Handle all downloads complete - auto refresh mods."""
+        self.status_bar.showMessage("Downloads complete! Refreshing mod list...")
+        
+        # Auto-refresh the mod list
+        self._scan_mods()
+        
+        # Update workshop browser downloaded IDs
+        if self.workshop_browser:
+            download_path = self.config.get_default_workshop_path()
+            if download_path.exists():
+                for item in download_path.iterdir():
+                    if item.is_dir() and item.name.isdigit():
+                        self.workshop_browser.mark_downloaded(item.name)
+        
+        # Switch to Mod Manager tab to show new mods
+        self.main_tabs.setCurrentIndex(0)
+        self.status_bar.showMessage("Mod list refreshed with newly downloaded mods!")
     
     def _on_download_progress(self, task: DownloadTask):
         """Handle download progress update."""
