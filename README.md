@@ -1,8 +1,8 @@
 # RimModManager
 
-[![GitHub license](https://img.shields.io/github/license/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux)](https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux/blob/main/LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux)](https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux/issues)
-[![GitHub stars](https://img.shields.io/github/stars/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux)](https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux/stargazers)
+[![GitHub license](https://img.shields.io/github/license/MrXploisLite/RimModManager)](https://github.com/MrXploisLite/RimModManager/blob/main/LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/MrXploisLite/RimModManager)](https://github.com/MrXploisLite/RimModManager/issues)
+[![GitHub stars](https://img.shields.io/github/stars/MrXploisLite/RimModManager)](https://github.com/MrXploisLite/RimModManager/stargazers)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 
@@ -50,8 +50,8 @@ yay -S steamcmd
 
 ### Run
 ```bash
-git clone https://github.com/MrXploisLite/RimWorld-Mod-Manager-for-Arch-Linux.git
-cd RimWorld-Mod-Manager-for-Arch-Linux
+git clone https://github.com/MrXploisLite/RimModManager.git
+cd RimModManager
 python main.py
 ```
 
