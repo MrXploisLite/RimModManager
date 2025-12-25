@@ -516,6 +516,22 @@ class ModInstaller:
         link_name = link_name or source_path.name
         dest_path = self.game_mods_path / link_name
         
+        # Skip if source is already in the destination folder (already installed)
+        try:
+            if source_path.resolve().parent == self.game_mods_path.resolve():
+                log.debug(f"Mod already in game folder, skipping: {source_path.name}")
+                return True  # Already there, consider it success
+        except (OSError, ValueError):
+            pass
+        
+        # Skip if source and destination are the same
+        try:
+            if source_path.resolve() == dest_path.resolve():
+                log.debug(f"Source and destination are same, skipping: {source_path.name}")
+                return True
+        except (OSError, ValueError):
+            pass
+        
         # Remove existing
         if dest_path.exists() or dest_path.is_symlink():
             try:
@@ -525,7 +541,8 @@ class ModInstaller:
                     shutil.rmtree(dest_path)
                 else:
                     dest_path.unlink()
-            except (OSError, PermissionError):
+            except (OSError, PermissionError) as e:
+                log.error(f"Failed to remove existing mod at {dest_path}: {e}")
                 return False
         
         if self.use_copy:
@@ -534,7 +551,7 @@ class ModInstaller:
                 shutil.copytree(source_path, dest_path)
                 return True
             except (OSError, PermissionError, shutil.Error) as e:
-                log.error(f"Failed to copy mod: {e}")
+                log.error(f"Failed to copy mod {source_path.name}: {e}")
                 return False
         else:
             # Symlink mode
