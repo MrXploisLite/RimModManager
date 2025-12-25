@@ -369,8 +369,20 @@ class ModDetailsPanel(QFrame):
         
         # Text info
         self.name_label.setText(mod.display_name())
-        self.author_label.setText(f"by {mod.author}")
-        self.package_id_label.setText(f"ID: {mod.package_id}")
+        
+        # Author - hide if empty
+        if mod.author and mod.author.strip() and mod.author != "Unknown":
+            self.author_label.setText(f"by {mod.author}")
+            self.author_label.show()
+        else:
+            self.author_label.hide()
+        
+        # Package ID - hide if empty
+        if mod.package_id and mod.package_id.strip():
+            self.package_id_label.setText(f"ID: {mod.package_id}")
+            self.package_id_label.show()
+        else:
+            self.package_id_label.hide()
         
         if mod.supported_versions:
             self.versions_label.setText(f"Versions: {', '.join(mod.supported_versions)}")
@@ -402,9 +414,13 @@ class ModDetailsPanel(QFrame):
         else:
             self.deps_label.hide()
         
-        # Path
+        # Path - show the mod folder path, not subfolder
         if mod.path:
-            self.path_label.setText(f"📁 {mod.path}")
+            # Make sure we're showing the mod root, not About subfolder
+            path_str = str(mod.path)
+            if path_str.endswith('/About') or path_str.endswith('\\About'):
+                path_str = str(mod.path.parent)
+            self.path_label.setText(f"📁 {path_str}")
             self.path_label.show()
         else:
             self.path_label.hide()

@@ -705,7 +705,10 @@ class MainWindow(QMainWindow):
             elif path.parent == mods_path:
                 # Individual mod in game's Mods folder
                 mod = self.mod_parser.parse_mod(path)
-                mods = [mod] if mod else []
+                if mod and mod.is_valid:
+                    mods = [mod]
+                else:
+                    mods = []
             else:
                 source = ModSource.LOCAL
                 mods = self.mod_parser.scan_directory(path, source)

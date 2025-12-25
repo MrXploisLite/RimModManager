@@ -313,6 +313,14 @@ class ModParser:
         if not directory.exists() or not directory.is_dir():
             return mods
         
+        # Folders to skip (not actual mods)
+        SKIP_FOLDERS = {
+            'about', 'assemblies', 'defs', 'languages', 'patches', 
+            'sounds', 'textures', 'source', 'news', '1.0', '1.1', 
+            '1.2', '1.3', '1.4', '1.5', 'common', 'v1.0', 'v1.1',
+            'v1.2', 'v1.3', 'v1.4', 'v1.5', 'loadfolders'
+        }
+        
         try:
             for item in directory.iterdir():
                 if item.is_dir():
@@ -320,8 +328,21 @@ class ModParser:
                     if item.name.startswith('.'):
                         continue
                     
+                    # Skip known non-mod folders
+                    if item.name.lower() in SKIP_FOLDERS:
+                        continue
+                    
+                    # Check if this looks like a valid mod (has About/About.xml)
+                    about_xml = item / "About" / "About.xml"
+                    about_xml_lower = item / "About" / "about.xml"
+                    legacy_xml = item / "about.xml"
+                    
+                    if not (about_xml.exists() or about_xml_lower.exists() or legacy_xml.exists()):
+                        # Not a valid mod folder, skip
+                        continue
+                    
                     mod = self.parse_mod(item)
-                    if mod:
+                    if mod and mod.is_valid:
                         if source != ModSource.LOCAL:
                             mod.source = source
                         mods.append(mod)
