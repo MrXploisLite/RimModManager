@@ -693,6 +693,130 @@ class GameLaunchDialog(QDialog):
             self.status_label.setText(f"❌ Failed: {e}")
 
 
+class QuickDownloadDialog(QDialog):
+    """Dialog for quick downloading mods by URL or ID."""
+    
+    download_requested = pyqtSignal(list)  # List of workshop IDs
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Quick Download")
+        self.setMinimumSize(500, 350)
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Instructions
+        info = QLabel(
+            "Paste Workshop URLs or IDs below (one per line).\n"
+            "Supported formats:\n"
+            "• https://steamcommunity.com/sharedfiles/filedetails/?id=1234567890\n"
+            "• steamcommunity.com/sharedfiles/filedetails/?id=1234567890\n"
+            "• 1234567890 (just the ID)"
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(info)
+        
+        # Text input
+        self.input_text = QTextEdit()
+        self.input_text.setPlaceholderText(
+            "Paste URLs or IDs here...\n\n"
+            "Example:\n"
+            "https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077\n"
+            "2009463077\n"
+            "1234567890"
+        )
+        layout.addWidget(self.input_text, 1)
+        
+        # Status label
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: #888;")
+        layout.addWidget(self.status_label)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        
+        self.btn_parse = QPushButton("🔍 Parse && Preview")
+        self.btn_parse.clicked.connect(self._parse_input)
+        btn_layout.addWidget(self.btn_parse)
+        
+        btn_layout.addStretch()
+        
+        self.btn_download = QPushButton("⬇️ Download")
+        self.btn_download.setEnabled(False)
+        self.btn_download.clicked.connect(self._start_download)
+        btn_layout.addWidget(self.btn_download)
+        
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(self.btn_cancel)
+        
+        layout.addLayout(btn_layout)
+        
+        self.parsed_ids = []
+    
+    def _parse_input(self):
+        """Parse input text and extract workshop IDs."""
+        import re
+        
+        text = self.input_text.toPlainText().strip()
+        if not text:
+            self.status_label.setText("⚠️ Please enter some URLs or IDs")
+            self.status_label.setStyleSheet("color: #ffa500;")
+            return
+        
+        lines = text.split('\n')
+        ids = []
+        
+        # Regex patterns
+        url_pattern = re.compile(r'[?&]id=(\d{7,12})')
+        id_pattern = re.compile(r'^(\d{7,12})$')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Try URL pattern first
+            match = url_pattern.search(line)
+            if match:
+                ids.append(match.group(1))
+                continue
+            
+            # Try plain ID
+            match = id_pattern.match(line)
+            if match:
+                ids.append(match.group(1))
+                continue
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_ids = []
+        for wid in ids:
+            if wid not in seen:
+                seen.add(wid)
+                unique_ids.append(wid)
+        
+        self.parsed_ids = unique_ids
+        
+        if unique_ids:
+            self.status_label.setText(f"✅ Found {len(unique_ids)} mod(s): {', '.join(unique_ids[:5])}{'...' if len(unique_ids) > 5 else ''}")
+            self.status_label.setStyleSheet("color: #69db7c;")
+            self.btn_download.setEnabled(True)
+        else:
+            self.status_label.setText("❌ No valid Workshop IDs found")
+            self.status_label.setStyleSheet("color: #ff6b6b;")
+            self.btn_download.setEnabled(False)
+    
+    def _start_download(self):
+        """Emit download signal and close."""
+        if self.parsed_ids:
+            self.download_requested.emit(self.parsed_ids)
+            self.accept()
+
+
 class SettingsDialog(QDialog):
     """Dialog for application settings."""
     
@@ -1125,6 +1249,14 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
+        # Quick Download - paste URLs/IDs directly
+        quick_download_action = QAction("⬇️ Quick Download...", self)
+        quick_download_action.setShortcut("Ctrl+D")
+        quick_download_action.triggered.connect(self._show_quick_download)
+        file_menu.addAction(quick_download_action)
+        
+        file_menu.addSeparator()
+        
         # Export modlist as text
         export_text_action = QAction("Export Modlist as Text...", self)
         export_text_action.setShortcut("Ctrl+Shift+E")
@@ -1319,6 +1451,12 @@ class MainWindow(QMainWindow):
         if isinstance(install, RimWorldInstallation):
             self.current_installation = install
             self.config.set("last_installation", str(install.path))
+            
+            # Check for config path override
+            override_path = self.config.get_config_path_override(str(install.path))
+            if override_path:
+                install.config_path = Path(override_path)
+                log.info(f"Using config path override: {override_path}")
             
             # Set up installer
             # Use copy mode for Proton/Wine (Windows builds on Linux) - symlinks don't work
@@ -2147,13 +2285,19 @@ class MainWindow(QMainWindow):
         
         install = self.current_installation
         
+        # Check for config path override
+        override_path = self.config.get_config_path_override(str(install.path))
+        
         # Build info text
         info = f"<b>Installation Path:</b><br><code>{install.path}</code><br><br>"
         info += f"<b>Type:</b> {install.install_type.value}<br>"
         info += f"<b>Windows Build:</b> {'Yes' if install.is_windows_build else 'No'}<br><br>"
         
         if install.config_path:
-            info += f"<b>Config Path:</b> ✅<br><code>{install.config_path}</code><br><br>"
+            if override_path:
+                info += f"<b>Config Path:</b> ✅ (Override)<br><code>{install.config_path}</code><br><br>"
+            else:
+                info += f"<b>Config Path:</b> ✅<br><code>{install.config_path}</code><br><br>"
         else:
             info += "<b>Config Path:</b> ⚠️ Not detected<br><br>"
         
@@ -2170,7 +2314,7 @@ class MainWindow(QMainWindow):
         # Create dialog
         dialog = QDialog(self)
         dialog.setWindowTitle("Installation Info")
-        dialog.setMinimumSize(500, 350)
+        dialog.setMinimumSize(500, 400)
         
         layout = QVBoxLayout(dialog)
         
@@ -2180,11 +2324,55 @@ class MainWindow(QMainWindow):
         info_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(info_label)
         
+        # Buttons for setting paths
+        btn_layout = QVBoxLayout()
+        
+        # Set Config Path Override button (always show for troubleshooting)
+        btn_set_config = QPushButton("📁 Set Config Path Override...")
+        btn_set_config.setToolTip(
+            "Manually set where ModsConfig.xml should be written.\n"
+            "Use this if auto-detection finds the wrong path."
+        )
+        def set_config_override():
+            start_path = str(install.config_path) if install.config_path else str(Path.home())
+            
+            config_path = QFileDialog.getExistingDirectory(
+                dialog, "Select Config Folder (contains ModsConfig.xml)", start_path
+            )
+            if config_path:
+                self.config.set_config_path_override(str(install.path), config_path)
+                install.config_path = Path(config_path)
+                # Update profiles widget
+                self.profiles_widget.set_config_path(install.config_path)
+                dialog.accept()
+                QMessageBox.information(
+                    self, "Config Path Set",
+                    f"Config path override saved:\n{config_path}\n\n"
+                    "ModsConfig.xml will now be written to this location."
+                )
+                # Show updated info
+                self._show_installation_info()
+        
+        btn_set_config.clicked.connect(set_config_override)
+        btn_layout.addWidget(btn_set_config)
+        
+        # Clear override button if one exists
+        if override_path:
+            btn_clear_override = QPushButton("🗑️ Clear Config Path Override")
+            def clear_override():
+                self.config.set_config_path_override(str(install.path), "")
+                # Re-detect paths
+                self.game_detector._detect_save_config_paths(install)
+                if install.config_path:
+                    self.profiles_widget.set_config_path(install.config_path)
+                dialog.accept()
+                self._show_installation_info()
+            btn_clear_override.clicked.connect(clear_override)
+            btn_layout.addWidget(btn_clear_override)
+        
         # Add button to set Proton prefix for Windows builds
         if install.is_windows_build:
-            btn_layout = QHBoxLayout()
-            
-            btn_set_prefix = QPushButton("Set Proton/Wine Prefix...")
+            btn_set_prefix = QPushButton("🍷 Set Proton/Wine Prefix...")
             def set_prefix():
                 start_path = str(Path.home() / ".local/share/Steam/steamapps/compatdata")
                 if install.proton_prefix:
@@ -2210,19 +2398,25 @@ class MainWindow(QMainWindow):
             
             btn_set_prefix.clicked.connect(set_prefix)
             btn_layout.addWidget(btn_set_prefix)
-            btn_layout.addStretch()
-            layout.addLayout(btn_layout)
+        
+        layout.addLayout(btn_layout)
         
         # Warning if no config path
         if not install.config_path:
             warning = QLabel(
                 "<br><b style='color: orange;'>⚠️ Warning:</b> Without a config path, "
                 "ModsConfig.xml cannot be updated and the game won't load your mods.<br><br>"
-                "For Windows builds, set the Proton/Wine prefix above.<br>"
-                "Or run the game once to create the config folder, then restart this app."
+                "<b>Solution:</b> Click 'Set Config Path Override' above and select the folder "
+                "containing your game's ModsConfig.xml file.<br><br>"
+                "Common locations:<br>"
+                "• Proton: ~/.local/share/Steam/steamapps/compatdata/[APPID]/pfx/drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config<br>"
+                "• Wine: ~/.wine/drive_c/users/[USER]/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config"
             )
             warning.setWordWrap(True)
+            warning.setStyleSheet("font-size: 11px;")
             layout.addWidget(warning)
+        
+        layout.addStretch()
         
         # Close button
         btn_close = QPushButton("Close")
@@ -2446,6 +2640,12 @@ class MainWindow(QMainWindow):
         # Add to tab layout
         layout = self.workshop_tab.layout()
         layout.addWidget(self.workshop_browser)
+    
+    def _show_quick_download(self):
+        """Show quick download dialog for pasting URLs/IDs directly."""
+        dialog = QuickDownloadDialog(self)
+        dialog.download_requested.connect(self._start_workshop_download)
+        dialog.exec()
     
     def _show_workshop_dialog(self):
         """Show the workshop download dialog - now switches to Workshop tab."""
