@@ -138,8 +138,12 @@ class ModNode(QGraphicsEllipseItem):
     def hoverEnterEvent(self, event):
         """Show tooltip on hover."""
         self.setPen(QPen(QColor("#ffffff"), 3))
+        # PyQt6: screenPos() returns QPointF, use toPoint() on QPointF
+        screen_pos = event.screenPos()
+        if hasattr(screen_pos, 'toPoint'):
+            screen_pos = screen_pos.toPoint()
         QToolTip.showText(
-            event.screenPos().toPoint(),
+            screen_pos,
             f"{self.data.name}\n{self.data.mod_id}"
         )
         super().hoverEnterEvent(event)

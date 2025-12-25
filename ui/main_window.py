@@ -1575,35 +1575,40 @@ class MainWindow(QMainWindow):
         self.active_list.clear_mods()
         self.mod_parser.clear_cache()
         
-        # Collect paths to scan
+        # Collect paths to scan - ORDER MATTERS for deduplication
+        # Priority: Workshop > User paths > Game's Mods folder
+        # This ensures we use Workshop version when duplicates exist
         paths_to_scan = []
+        game_mods_path = self.current_installation.path / "Mods"
         
-        # Game's Data folder (Core/DLCs)
+        # 1. Game's Data folder (Core/DLCs) - always first
         data_path = self.current_installation.path / "Data"
         if data_path.exists():
             paths_to_scan.append(data_path)
         
-        # Game's Mods folder (get actual mod locations, not symlinks)
-        mods_path = self.current_installation.path / "Mods"
-        if mods_path.exists():
-            for item in mods_path.iterdir():
-                if item.is_symlink():
-                    target = item.resolve()
-                    if target.exists() and target not in paths_to_scan:
-                        paths_to_scan.append(target)
-                elif item.is_dir():
-                    paths_to_scan.append(item)
-        
-        # Workshop mods
+        # 2. Workshop mods - scan BEFORE game's Mods folder
         workshop = self.game_detector.find_workshop_mods_path()
         if workshop and workshop.exists():
             paths_to_scan.append(workshop)
         
-        # User-defined mod paths
+        # 3. User-defined mod paths
         for path_str in self.config.config.mod_source_paths:
             path = Path(path_str)
             if path.exists() and path not in paths_to_scan:
-                paths_to_scan.append(path)
+                # Don't add game's Mods folder as a source
+                if path.resolve() != game_mods_path.resolve():
+                    paths_to_scan.append(path)
+        
+        # 4. Game's Mods folder - scan LAST (lowest priority for duplicates)
+        # Only scan mods that aren't symlinks (symlinks point to sources we already scanned)
+        game_mods_to_scan = []
+        if game_mods_path.exists():
+            for item in game_mods_path.iterdir():
+                if item.is_symlink():
+                    # Skip symlinks - they point to sources we already scanned
+                    continue
+                elif item.is_dir() and not item.name.endswith('.txt'):
+                    game_mods_to_scan.append(item)
         
         # Scan directories
         all_mods = []
@@ -1616,20 +1621,22 @@ class MainWindow(QMainWindow):
             elif "workshop" in str(path).lower():
                 source = ModSource.WORKSHOP
                 mods = self.mod_parser.scan_directory(path, source)
-            elif path.parent == mods_path:
-                # Individual mod in game's Mods folder
-                mod = self.mod_parser.parse_mod(path)
-                if mod and mod.is_valid:
-                    mods = [mod]
-                else:
-                    mods = []
             else:
                 source = ModSource.LOCAL
                 mods = self.mod_parser.scan_directory(path, source)
             
             all_mods.extend(mods)
         
-        # Remove duplicates by package_id
+        # Scan game's Mods folder last (individual mods, not symlinks)
+        for mod_path in game_mods_to_scan:
+            mod = self.mod_parser.parse_mod(mod_path)
+            if mod and mod.is_valid:
+                # Mark as LOCAL since it's in game folder but not from Workshop
+                mod.source = ModSource.LOCAL
+                all_mods.append(mod)
+        
+        # Remove duplicates by package_id - FIRST occurrence wins
+        # Since Workshop is scanned first, Workshop version is preferred
         seen = {}
         unique_mods = []
         for mod in all_mods:
@@ -1637,6 +1644,10 @@ class MainWindow(QMainWindow):
             if key not in seen:
                 seen[key] = mod
                 unique_mods.append(mod)
+            else:
+                # Log duplicate for debugging
+                existing = seen[key]
+                log.debug(f"Duplicate mod {key}: keeping {existing.source.value} from {existing.path}, skipping {mod.source.value} from {mod.path}")
         
         self.all_mods = unique_mods
         
