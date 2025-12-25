@@ -71,6 +71,10 @@ class AppConfig:
     
     # Auto-update settings
     check_updates_on_startup: bool = False
+    
+    # Config path overrides per installation (for standalone/Wine games)
+    # Key: installation path, Value: config folder path
+    config_path_overrides: dict[str, str] = field(default_factory=dict)
 
 
 class ConfigHandler:
@@ -331,3 +335,19 @@ class ConfigHandler:
             List of package IDs in load order, or empty list if none saved
         """
         return self._config.active_mods.get(installation_path, [])
+
+    
+    def set_config_path_override(self, installation_path: str, config_path: str) -> None:
+        """
+        Set a custom config path override for an installation.
+        Useful for standalone/Wine games where auto-detection fails.
+        """
+        if config_path:
+            self._config.config_path_overrides[installation_path] = config_path
+        elif installation_path in self._config.config_path_overrides:
+            del self._config.config_path_overrides[installation_path]
+        self.save()
+    
+    def get_config_path_override(self, installation_path: str) -> Optional[str]:
+        """Get custom config path override for an installation."""
+        return self._config.config_path_overrides.get(installation_path)
