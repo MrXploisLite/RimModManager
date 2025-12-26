@@ -286,6 +286,7 @@ class DraggableModList(QListWidget):
     mods_changed = pyqtSignal()  # Emitted when mods are added/removed/reordered
     mod_activated = pyqtSignal(ModInfo)  # Emitted when a mod is double-clicked
     mod_deactivated = pyqtSignal(ModInfo)  # Emitted when a mod is removed
+    uninstall_selected = pyqtSignal(list)  # Emitted when user wants to uninstall selected mods
     
     def __init__(self, parent=None, is_active_list: bool = False):
         super().__init__(parent)
@@ -563,6 +564,13 @@ class DraggableModList(QListWidget):
                 move_bottom = QAction("Move to Bottom", self)
                 move_bottom.triggered.connect(self.move_selected_to_bottom)
                 menu.addAction(move_bottom)
+                
+                menu.addSeparator()
+            
+            # Uninstall option (for both lists)
+            uninstall_action = QAction(f"🗑️ Uninstall Selected ({len(selected)})", self)
+            uninstall_action.triggered.connect(self._context_uninstall)
+            menu.addAction(uninstall_action)
         
         if menu.actions():
             menu.exec(self.mapToGlobal(position))
@@ -578,6 +586,12 @@ class DraggableModList(QListWidget):
         for item in self.selectedItems():
             if isinstance(item, ModListItem):
                 self.mod_deactivated.emit(item.mod)
+    
+    def _context_uninstall(self) -> None:
+        """Request uninstall of selected mods."""
+        mods = self.get_selected_mods()
+        if mods:
+            self.uninstall_selected.emit(mods)
     
     def dropEvent(self, event):
         """Handle drop event for reordering."""

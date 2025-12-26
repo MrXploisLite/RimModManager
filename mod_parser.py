@@ -455,63 +455,92 @@ class ModParser:
         """
         Sort mods respecting loadBefore and loadAfter rules.
         Uses topological sort with Kahn's algorithm.
+        Also enforces critical load order: Harmony → Core → DLCs → Frameworks → Others
         """
         from collections import deque
         
         if not mods:
             return []
         
-        # Build dependency graph
+        # Critical mods that must be at the top in specific order
+        CRITICAL_ORDER = [
+            "brrainz.harmony",           # Harmony must be first
+            "ludeon.rimworld",           # Core
+            "ludeon.rimworld.royalty",   # DLCs
+            "ludeon.rimworld.ideology",
+            "ludeon.rimworld.biotech",
+            "ludeon.rimworld.anomaly",
+            "oskarpotocki.vanillaexpanded.framework",  # VEF
+            "unlimitedhugs.hugslib",     # HugsLib
+        ]
+        
+        # Build mod dict
         mod_dict = {m.package_id.lower(): m for m in mods}
         
-        # Calculate in-degrees and adjacency
-        in_degree = {m.package_id.lower(): 0 for m in mods}
-        graph = {m.package_id.lower(): [] for m in mods}
+        # Separate critical mods from others
+        critical_mods = []
+        other_mods = []
+        
+        for critical_id in CRITICAL_ORDER:
+            if critical_id in mod_dict:
+                critical_mods.append(mod_dict[critical_id])
         
         for mod in mods:
+            mod_id = mod.package_id.lower()
+            if mod_id not in CRITICAL_ORDER:
+                other_mods.append(mod)
+        
+        # Sort other mods using topological sort
+        if not other_mods:
+            return critical_mods
+        
+        # Build dependency graph for non-critical mods
+        other_dict = {m.package_id.lower(): m for m in other_mods}
+        in_degree = {m.package_id.lower(): 0 for m in other_mods}
+        graph = {m.package_id.lower(): [] for m in other_mods}
+        
+        for mod in other_mods:
             mod_id = mod.package_id.lower()
             
             # loadAfter means this mod should come after those mods
             for after_id in mod.load_after:
                 after_id = after_id.lower()
-                if after_id in mod_dict:
+                if after_id in other_dict:
                     graph[after_id].append(mod_id)
                     in_degree[mod_id] += 1
             
             # loadBefore means this mod should come before those mods
             for before_id in mod.load_before:
                 before_id = before_id.lower()
-                if before_id in mod_dict:
+                if before_id in other_dict:
                     graph[mod_id].append(before_id)
                     in_degree[before_id] += 1
         
-        # Kahn's algorithm with deque for O(1) popleft
-        # Sort initial queue once for deterministic order
+        # Kahn's algorithm
         queue = deque(sorted([m for m in in_degree if in_degree[m] == 0]))
-        result = []
+        sorted_others = []
         
         while queue:
             node = queue.popleft()
-            result.append(mod_dict[node])
+            sorted_others.append(other_dict[node])
             
-            # Collect new nodes with zero in-degree
             new_nodes = []
             for neighbor in graph[node]:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
                     new_nodes.append(neighbor)
             
-            # Sort and extend for deterministic order
             if new_nodes:
                 new_nodes.sort()
                 queue.extend(new_nodes)
         
-        # If there's a cycle, return original order for remaining mods
-        if len(result) != len(mods):
-            remaining = [m for m in mods if m not in result]
-            result.extend(remaining)
+        # Handle cycles - add remaining mods
+        if len(sorted_others) != len(other_mods):
+            remaining = [m for m in other_mods if m not in sorted_others]
+            sorted_others.extend(remaining)
         
-        return result
+        # Combine: critical mods first, then sorted others
+        return critical_mods + sorted_others
     
     def clear_cache(self) -> None:
         """Clear the mod cache."""

@@ -1,6 +1,7 @@
 """
 Download Manager with Live Logging for RimModManager
 Provides real-time SteamCMD output and download progress.
+Supports parallel downloads for faster mod collection downloads.
 """
 
 import os
@@ -8,6 +9,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
+import threading
+import concurrent.futures
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -16,7 +20,7 @@ from enum import Enum
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QProgressBar, QGroupBox, QFrame,
-    QSplitter, QListWidget, QListWidgetItem
+    QSplitter, QListWidget, QListWidgetItem, QSpinBox, QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QTextCursor, QColor
@@ -153,7 +157,8 @@ def get_mod_name_from_path(mod_path: Path) -> str:
 class LiveDownloadWorker(QThread):
     """
     Download worker with live output streaming.
-    Uses batch download mode - single SteamCMD session for all mods.
+    Supports both parallel (multiple SteamCMD processes) and batch (single session) modes.
+    Parallel mode is faster but uses more resources.
     """
     
     # Signals
@@ -166,22 +171,38 @@ class LiveDownloadWorker(QThread):
     
     RIMWORLD_APPID = "294100"
     
-    def __init__(self, steamcmd_path: str, workshop_ids: list[str], download_path: Path):
+    def __init__(self, steamcmd_path: str, workshop_ids: list[str], download_path: Path,
+                 download_mode: str = "parallel", max_parallel: int = 3, 
+                 timeout_per_mod: int = 300, max_retries: int = 3):
         super().__init__()
         self.steamcmd_path = steamcmd_path
         self.workshop_ids = workshop_ids
         self.download_path = download_path
+        self.download_mode = download_mode  # "parallel" or "batch"
+        self.max_parallel = max_parallel
+        self.timeout_per_mod = timeout_per_mod  # seconds
+        self.max_retries = max_retries
         self._cancelled = False
         self._process = None
+        self._processes: list[subprocess.Popen] = []
+        self._lock = threading.Lock()
     
     def cancel(self):
         """Cancel the download."""
         self._cancelled = True
+        # Terminate single process (batch mode)
         if self._process:
             try:
                 self._process.terminate()
             except (OSError, ProcessLookupError):
                 pass
+        # Terminate all parallel processes
+        with self._lock:
+            for proc in self._processes:
+                try:
+                    proc.terminate()
+                except (OSError, ProcessLookupError):
+                    pass
     
     def run(self):
         success = 0
@@ -195,7 +216,6 @@ class LiveDownloadWorker(QThread):
         for wid in self.workshop_ids:
             existing_path = self.download_path / wid
             if existing_path.exists() and self._is_valid_mod(existing_path):
-                # Mod already exists, skip download
                 mod_name = get_mod_name_from_path(existing_path)
                 self.log_output.emit(f"[SKIP] Mod {wid} already exists: {mod_name}")
                 self.item_complete.emit(wid, str(existing_path), mod_name)
@@ -208,23 +228,35 @@ class LiveDownloadWorker(QThread):
             self.all_complete.emit(skipped, 0)
             return
         
-        # Use batch download - single SteamCMD session for remaining mods
-        self.log_output.emit(f"\n[INFO] Starting batch download of {len(ids_to_download)} mod(s)")
-        if skipped > 0:
-            self.log_output.emit(f"[INFO] Skipped {skipped} already downloaded mod(s)")
-        self.log_output.emit(f"[INFO] Using single SteamCMD session for efficiency\n")
-        
-        results = self._download_batch(ids_to_download)
+        # Choose download mode
+        if self.download_mode == "parallel":
+            self.log_output.emit(f"\n[INFO] Starting PARALLEL download of {len(ids_to_download)} mod(s)")
+            self.log_output.emit(f"[INFO] Max {self.max_parallel} concurrent downloads, {self.timeout_per_mod}s timeout per mod")
+            if skipped > 0:
+                self.log_output.emit(f"[INFO] Skipped {skipped} already downloaded mod(s)")
+            self.log_output.emit("")
+            
+            results = self._download_parallel(ids_to_download)
+        else:
+            self.log_output.emit(f"\n[INFO] Starting BATCH download of {len(ids_to_download)} mod(s)")
+            if skipped > 0:
+                self.log_output.emit(f"[INFO] Skipped {skipped} already downloaded mod(s)")
+            self.log_output.emit(f"[INFO] Using single SteamCMD session\n")
+            
+            results = self._download_batch(ids_to_download)
         
         for wid, result_path in results.items():
             if result_path:
                 mod_name = get_mod_name_from_path(result_path)
                 success += 1
-                self.item_complete.emit(wid, str(result_path), mod_name)
-                self.log_output.emit(f"[SUCCESS] {mod_name} ({wid}) -> {result_path}")
+                # Only emit for batch mode - parallel mode emits in real-time
+                if self.download_mode != "parallel":
+                    self.item_complete.emit(wid, str(result_path), mod_name)
+                self.log_output.emit(f"[SUCCESS] {mod_name} ({wid})")
             else:
                 failed += 1
-                self.item_failed.emit(wid, "Download failed")
+                if self.download_mode != "parallel":
+                    self.item_failed.emit(wid, "Download failed")
         
         self.all_complete.emit(success + skipped, failed)
     
@@ -233,17 +265,188 @@ class LiveDownloadWorker(QThread):
         about_xml = mod_path / "About" / "About.xml"
         if about_xml.exists():
             return True
-        # Try lowercase
         about_xml_lower = mod_path / "About" / "about.xml"
         return about_xml_lower.exists()
+    
+    def _download_parallel(self, workshop_ids: list[str]) -> dict[str, Optional[Path]]:
+        """Download mods using multiple parallel SteamCMD processes."""
+        results = {wid: None for wid in workshop_ids}
+        
+        self.log_output.emit(f"{'='*50}")
+        self.log_output.emit(f"[PARALLEL] Downloading {len(workshop_ids)} mods")
+        self.log_output.emit(f"[INFO] Using {self.max_parallel} parallel workers")
+        self.log_output.emit(f"{'='*50}\n")
+        
+        # Mark all as started
+        for wid in workshop_ids:
+            self.item_started.emit(wid)
+        
+        completed_count = [0]  # Use list for mutable in closure
+        total_mods = len(workshop_ids)
+        
+        def download_single(wid: str) -> tuple[str, Optional[Path]]:
+            """Download a single mod with retries."""
+            if self._cancelled:
+                return wid, None
+            
+            for attempt in range(self.max_retries):
+                if self._cancelled:
+                    return wid, None
+                
+                if attempt > 0:
+                    self.log_output.emit(f"[RETRY {attempt}/{self.max_retries}] Mod {wid}")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                
+                result = self._download_single_mod(wid)
+                if result:
+                    with self._lock:
+                        completed_count[0] += 1
+                        count = completed_count[0]
+                    self.log_output.emit(f"[OK {count}/{total_mods}] Mod {wid} downloaded")
+                    # Emit item_complete signal for real-time progress update
+                    mod_name = get_mod_name_from_path(result)
+                    self.item_complete.emit(wid, str(result), mod_name)
+                    return wid, result
+            
+            self.log_output.emit(f"[FAILED] Mod {wid} after {self.max_retries} attempts")
+            self.item_failed.emit(wid, f"Failed after {self.max_retries} attempts")
+            return wid, None
+        
+        # Use ThreadPoolExecutor for parallel downloads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
+            future_to_wid = {executor.submit(download_single, wid): wid for wid in workshop_ids}
+            
+            for future in concurrent.futures.as_completed(future_to_wid):
+                if self._cancelled:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+                
+                try:
+                    wid, result_path = future.result()
+                    results[wid] = result_path
+                except Exception as e:
+                    wid = future_to_wid[future]
+                    self.log_output.emit(f"[ERROR] Mod {wid}: {e}")
+                    self.item_failed.emit(wid, str(e))
+                    results[wid] = None
+        
+        return results
+    
+    def _download_single_mod(self, workshop_id: str) -> Optional[Path]:
+        """Download a single mod in its own SteamCMD process."""
+        temp_path = Path(tempfile.mkdtemp(prefix=f"rimmod_{workshop_id}_"))
+        
+        try:
+            self.item_progress.emit(workshop_id, 5)
+            
+            cmd = [
+                self.steamcmd_path,
+                "+force_install_dir", str(temp_path),
+                "+login", "anonymous",
+                "+workshop_download_item", self.RIMWORLD_APPID, workshop_id,
+                "+quit"
+            ]
+            
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            
+            # Track process for cancellation
+            with self._lock:
+                self._processes.append(process)
+            
+            self.item_progress.emit(workshop_id, 10)
+            
+            # Read output with timeout
+            start_time = time.time()
+            success = False
+            
+            try:
+                while True:
+                    if self._cancelled:
+                        process.terminate()
+                        return None
+                    
+                    # Check timeout
+                    if time.time() - start_time > self.timeout_per_mod:
+                        self.log_output.emit(f"[TIMEOUT] Mod {workshop_id} exceeded {self.timeout_per_mod}s")
+                        process.terminate()
+                        return None
+                    
+                    # Non-blocking read with timeout
+                    try:
+                        line = process.stdout.readline()
+                        if not line and process.poll() is not None:
+                            break
+                        
+                        if line:
+                            line = line.strip()
+                            # Parse progress
+                            if "Downloading item" in line:
+                                self.item_progress.emit(workshop_id, 20)
+                            elif "Success" in line and "Downloaded item" in line:
+                                success = True
+                                self.item_progress.emit(workshop_id, 90)
+                            # Parse byte progress
+                            progress_match = re.search(r'(\d+)\s*/\s*(\d+)', line)
+                            if progress_match:
+                                downloaded = int(progress_match.group(1))
+                                total = int(progress_match.group(2))
+                                if total > 0:
+                                    pct = min(85, 20 + int(downloaded * 65 / total))
+                                    self.item_progress.emit(workshop_id, pct)
+                    except Exception:
+                        pass
+                
+                process.wait(timeout=10)
+                
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                return None
+            finally:
+                with self._lock:
+                    if process in self._processes:
+                        self._processes.remove(process)
+            
+            # Move to final location
+            workshop_content = temp_path / "steamapps/workshop/content" / self.RIMWORLD_APPID / workshop_id
+            
+            if workshop_content.exists():
+                self.item_progress.emit(workshop_id, 95)
+                final_path = self.download_path / workshop_id
+                
+                if final_path.exists():
+                    shutil.rmtree(final_path, ignore_errors=True)
+                
+                shutil.move(str(workshop_content), str(final_path))
+                self.item_progress.emit(workshop_id, 100)
+                return final_path
+            
+            return None
+            
+        except Exception as e:
+            self.log_output.emit(f"[ERROR] Mod {workshop_id}: {e}")
+            return None
+        finally:
+            # Cleanup temp directory
+            try:
+                if temp_path.exists():
+                    shutil.rmtree(temp_path, ignore_errors=True)
+            except Exception:
+                pass
     
     def _download_batch(self, workshop_ids: list[str]) -> dict[str, Optional[Path]]:
         """Download multiple mods in a single SteamCMD session."""
         results = {wid: None for wid in workshop_ids}
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
+        # Create temp directory manually so we can handle cleanup ourselves
+        temp_path = Path(tempfile.mkdtemp(prefix="rimmod_"))
+        
+        try:
             # Build batch command - login once, download all
             cmd = [
                 self.steamcmd_path,
@@ -260,6 +463,7 @@ class LiveDownloadWorker(QThread):
             
             self.log_output.emit(f"{'='*50}")
             self.log_output.emit(f"[BATCH] Downloading {len(workshop_ids)} mods in single session")
+            self.log_output.emit(f"[INFO] This may take a while for large collections...")
             self.log_output.emit(f"{'='*50}\n")
             
             try:
@@ -274,6 +478,8 @@ class LiveDownloadWorker(QThread):
                 
                 current_wid = None
                 logged_in = False
+                download_count = 0
+                total_mods = len(workshop_ids)
                 
                 # Stream output with filtering
                 if self._process.stdout:
@@ -293,12 +499,15 @@ class LiveDownloadWorker(QThread):
                             "CProcessWorkItem",
                             "Work Item",
                             "d3ddriverquery",
+                            "ILocalize",
+                            "CAppInfoCacheReadFromDisk",
                         ]
                     
                         should_skip = any(p in line for p in skip_patterns)
                     
                         # Clean ANSI codes
-                        clean_line = re.sub(r'\[0m', '', line).strip()
+                        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()
+                        clean_line = re.sub(r'\[0m', '', clean_line).strip()
                     
                         if not clean_line or should_skip:
                             continue
@@ -314,12 +523,18 @@ class LiveDownloadWorker(QThread):
                         elif logged_in and ("Connecting anonymously" in clean_line or "Waiting for" in clean_line):
                             # Skip repeated connection messages
                             continue
+                        
+                        # Detect "Checking for available updates" - this means download is starting
+                        if "Checking for available update" in clean_line:
+                            self.log_output.emit(f"[INFO] Checking Workshop items... ({download_count}/{total_mods})")
+                            continue
                     
                         # Detect which mod is being downloaded
                         download_match = re.search(r'Downloading item (\d+)', clean_line)
                         if download_match:
                             current_wid = download_match.group(1)
-                            self.log_output.emit(f"\n[DOWNLOAD] Mod {current_wid}...")
+                            download_count += 1
+                            self.log_output.emit(f"\n[DOWNLOAD {download_count}/{total_mods}] Mod {current_wid}...")
                             self.item_progress.emit(current_wid, 10)
                             continue
                     
@@ -329,6 +544,19 @@ class LiveDownloadWorker(QThread):
                             wid = success_match.group(1)
                             self.item_progress.emit(wid, 100)
                             self.log_output.emit(f"[OK] Mod {wid} downloaded")
+                            continue
+                        
+                        # Detect download progress (bytes)
+                        progress_match = re.search(r'(\d+)\s*/\s*(\d+)', clean_line)
+                        if progress_match and current_wid:
+                            downloaded = int(progress_match.group(1))
+                            total = int(progress_match.group(2))
+                            if total > 0:
+                                pct = min(99, int(downloaded * 100 / total))
+                                self.item_progress.emit(current_wid, pct)
+                                # Only show progress every 10%
+                                if pct % 20 == 0:
+                                    self.log_output.emit(f"  Progress: {pct}%")
                             continue
                     
                         # Show other relevant output
@@ -341,6 +569,9 @@ class LiveDownloadWorker(QThread):
                         elif "%" in clean_line:
                             # Progress percentage
                             self.log_output.emit(f"  {clean_line}")
+                        elif "workshop" in clean_line.lower() and ("download" in clean_line.lower() or "item" in clean_line.lower()):
+                            # Other workshop-related messages
+                            self.log_output.emit(f"[INFO] {clean_line}")
                     
                         if self._cancelled:
                             self._process.terminate()
@@ -372,12 +603,27 @@ class LiveDownloadWorker(QThread):
             except (OSError, IOError, subprocess.SubprocessError) as e:
                 self.log_output.emit(f"[EXCEPTION] {e}")
         
+        finally:
+            # Clean up temp directory manually with retry
+            try:
+                import time
+                for attempt in range(3):
+                    try:
+                        if temp_path.exists():
+                            shutil.rmtree(temp_path, ignore_errors=True)
+                        break
+                    except (OSError, PermissionError):
+                        time.sleep(0.5)  # Wait a bit and retry
+            except Exception:
+                pass  # Ignore cleanup errors
+        
         return results
 
 
 class DownloadLogWidget(QWidget):
     """
     Widget showing live download progress and logs.
+    Supports parallel and batch download modes.
     """
     
     download_complete = pyqtSignal(str)  # Emits download path for auto-add
@@ -404,6 +650,25 @@ class DownloadLogWidget(QWidget):
         self.status_label.setStyleSheet("color: #888;")
         header.addWidget(self.status_label)
         layout.addLayout(header)
+        
+        # Download settings row
+        settings_row = QHBoxLayout()
+        
+        settings_row.addWidget(QLabel("Mode:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Parallel (Faster)", "Batch (Single Session)"])
+        self.mode_combo.setToolTip("Parallel: Multiple SteamCMD processes (faster)\nBatch: Single session (uses less resources)")
+        settings_row.addWidget(self.mode_combo)
+        
+        settings_row.addWidget(QLabel("Workers:"))
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, 6)
+        self.workers_spin.setValue(3)
+        self.workers_spin.setToolTip("Number of parallel downloads (only for Parallel mode)")
+        settings_row.addWidget(self.workers_spin)
+        
+        settings_row.addStretch()
+        layout.addLayout(settings_row)
         
         # Progress
         self.progress_bar = QProgressBar()
@@ -483,6 +748,14 @@ class DownloadLogWidget(QWidget):
         self._items.clear()
         self.log_text.clear()
         
+        # Get download settings
+        download_mode = "parallel" if self.mode_combo.currentIndex() == 0 else "batch"
+        max_parallel = self.workers_spin.value()
+        
+        # Disable settings during download
+        self.mode_combo.setEnabled(False)
+        self.workers_spin.setEnabled(False)
+        
         self._log_info("Fetching mod names from Steam Workshop...")
         
         # Fetch mod names from Steam API
@@ -515,27 +788,37 @@ class DownloadLogWidget(QWidget):
         self.progress_bar.setMaximum(len(workshop_ids))
         self.progress_bar.setValue(0)
         
-        self.status_label.setText(f"Downloading 0/{len(workshop_ids)}...")
+        mode_str = f"Parallel ({max_parallel} workers)" if download_mode == "parallel" else "Batch"
+        self.status_label.setText(f"Downloading 0/{len(workshop_ids)} [{mode_str}]...")
         self.btn_cancel.setEnabled(True)
         
-        # Start worker
-        self._worker = LiveDownloadWorker(steamcmd_path, workshop_ids, download_path)
+        # Start worker with settings
+        self._worker = LiveDownloadWorker(
+            steamcmd_path, workshop_ids, download_path,
+            download_mode=download_mode,
+            max_parallel=max_parallel,
+            timeout_per_mod=300,  # 5 minutes per mod
+            max_retries=3
+        )
         self._worker.log_output.connect(self._on_log)
         self._worker.item_started.connect(self._on_item_started)
         self._worker.item_progress.connect(self._on_item_progress)
         self._worker.item_complete.connect(self._on_item_complete)
         self._worker.item_failed.connect(self._on_item_failed)
         self._worker.all_complete.connect(self._on_all_complete)
-        self._worker.finished.connect(self._cleanup_worker)  # Clean up when done
+        self._worker.finished.connect(self._cleanup_worker)
         self._worker.start()
         
-        self._log_info("Download manager started...")
+        self._log_info(f"Download manager started ({mode_str})...")
     
     def _cleanup_worker(self):
         """Clean up finished worker to prevent memory leak."""
         if self._worker:
             self._worker.deleteLater()
             self._worker = None
+        # Re-enable settings
+        self.mode_combo.setEnabled(True)
+        self.workers_spin.setEnabled(True)
     
     def _fetch_mod_names(self, workshop_ids: list[str]) -> dict[str, str]:
         """Fetch mod names from Steam Workshop API."""
@@ -579,13 +862,13 @@ class DownloadLogWidget(QWidget):
     def _on_log(self, line: str):
         """Handle log output."""
         # Color code the output
-        if "[ERROR]" in line or "[EXCEPTION]" in line or "[FAILED]" in line or "[WARNING]" in line:
+        if "[ERROR]" in line or "[EXCEPTION]" in line or "[FAILED]" in line or "[WARNING]" in line or "[TIMEOUT]" in line:
             self.log_text.setTextColor(QColor("#ff6b6b"))
-        elif "[SUCCESS]" in line or "[OK]" in line:
+        elif "[SUCCESS]" in line or "[OK" in line:
             self.log_text.setTextColor(QColor("#69db7c"))
-        elif "[SESSION]" in line or "[BATCH]" in line or "[INFO]" in line:
+        elif "[SESSION]" in line or "[BATCH]" in line or "[INFO]" in line or "[PARALLEL]" in line:
             self.log_text.setTextColor(QColor("#74c0fc"))
-        elif "[DOWNLOAD]" in line:
+        elif "[DOWNLOAD]" in line or "[RETRY" in line:
             self.log_text.setTextColor(QColor("#ffd43b"))
         elif line.startswith("="):
             self.log_text.setTextColor(QColor("#ffd43b"))
@@ -620,7 +903,7 @@ class DownloadLogWidget(QWidget):
         if workshop_id in self._items:
             self._items[workshop_id].name = mod_name
         
-        self._update_queue_item(workshop_id, "✅", f"{mod_name}")
+        self._update_queue_item(workshop_id, "✅", f"{mod_name} - 100%")
         self.progress_bar.setValue(self.progress_bar.value() + 1)
         
         done = self.progress_bar.value()
