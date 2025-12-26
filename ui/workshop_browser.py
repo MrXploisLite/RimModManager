@@ -341,14 +341,13 @@ class WorkshopBrowser(QWidget):
         """Handle URL change in web view."""
         self.url_input.setText(url.toString())
         
-        # Auto-detect if on a mod page
+        # Auto-detect if on a mod/collection page
         url_str = url.toString()
         if "filedetails" in url_str and "id=" in url_str:
+            # Both mods and collections use filedetails URL
+            # Button will auto-detect type when clicked
             self.btn_add.setStyleSheet("background-color: #2a5a2a;")
-            self.btn_add.setText("➕ Add This Mod")
-        elif "collection" in url_str.lower():
-            self.btn_add.setStyleSheet("background-color: #5a5a2a;")
-            self.btn_add.setText("📁 Add Collection")
+            self.btn_add.setText("➕ Add to Queue")
         else:
             self.btn_add.setStyleSheet("")
             self.btn_add.setText("➕ Add to Queue")
@@ -374,22 +373,242 @@ class WorkshopBrowser(QWidget):
         if not url:
             return
         
-        # Auto-detect if this is a collection URL
-        if 'collection' in url.lower() or ('steamcommunity' in url and 'filedetails' in url):
-            # Check if it's actually a collection by looking at the URL pattern
-            # Collections have ?id= but the page content determines if it's a collection
-            # For now, check if URL contains 'collection' keyword
-            if 'collection' in url.lower():
-                self._parse_collection_async()
-                return
-        
-        # Extract workshop ID for single mod
+        # Extract workshop ID first
         workshop_id = self._extract_workshop_id(url)
-        if workshop_id:
-            self._add_to_queue(workshop_id)
-            self.url_input.clear()  # Clear after adding
-        else:
+        if not workshop_id:
             self.status_label.setText("Could not find mod ID in URL")
+            return
+        
+        # Check if this is a collection by fetching the page and checking content
+        # Collections and single mods both use filedetails/?id= URL pattern
+        if 'steamcommunity' in url and 'filedetails' in url:
+            self._detect_and_add_item(url, workshop_id)
+        else:
+            # Direct ID input - add as single mod
+            self._add_to_queue(workshop_id)
+            self.url_input.clear()
+    
+    def _detect_and_add_item(self, url: str, workshop_id: str):
+        """Detect if URL is a collection or single mod and add accordingly."""
+        import urllib.request
+        import urllib.error
+        
+        self.status_label.setText("Checking item type...")
+        QApplication.processEvents()
+        
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
+            )
+            
+            with urllib.request.urlopen(request, timeout=15) as response:
+                html = response.read().decode('utf-8', errors='replace')
+            
+            # Check for collection indicators in HTML
+            # Collections have: collectionChildren, collectionItemDetails, CollectionItems
+            is_collection = any(indicator in html for indicator in [
+                'collectionChildren',
+                'collectionItemDetails', 
+                'CollectionItems',
+                'workshopItemCollection',
+                'class="collectionItem'
+            ])
+            
+            if is_collection:
+                # Parse as collection
+                self._parse_collection_from_html(html, workshop_id)
+            else:
+                # Add as single mod
+                self._add_to_queue(workshop_id)
+                self.url_input.clear()
+                
+        except urllib.error.URLError as e:
+            self.status_label.setText(f"Network error: {e.reason}")
+            # Fallback: add as single mod
+            self._add_to_queue(workshop_id)
+            self.url_input.clear()
+        except Exception as e:
+            self.status_label.setText(f"Error checking item: {e}")
+            # Fallback: add as single mod
+            self._add_to_queue(workshop_id)
+            self.url_input.clear()
+    
+    def _parse_collection_from_html(self, html: str, collection_id: str):
+        """Parse collection mods from already-fetched HTML."""
+        from PyQt6.QtWidgets import QProgressDialog
+        
+        # Create progress dialog
+        progress = QProgressDialog("Parsing collection...", "Cancel", 0, 0, self)
+        progress.setWindowTitle("Loading Collection")
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+        QApplication.processEvents()
+        
+        try:
+            progress.setLabelText("Extracting mod IDs...")
+            QApplication.processEvents()
+            
+            # Try to extract ONLY collection items, not sidebar/related items
+            # Method 1: Look for collectionChildren div and extract IDs from within it
+            collection_ids = set()
+            
+            # Pattern for collection items specifically (most reliable)
+            # These patterns target the actual collection item containers
+            collection_patterns = [
+                # Collection item divs with sharedfile ID
+                r'class="collectionItem[^"]*"[^>]*id="sharedfile_(\d{7,12})"',
+                # Collection item links within collectionChildren
+                r'collectionItem[^>]*href="[^"]*\?id=(\d{7,12})"',
+                # Data attributes on collection items
+                r'class="collectionItem[^"]*"[^>]*data-publishedfileid="(\d{7,12})"',
+            ]
+            
+            for pattern in collection_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE)
+                collection_ids.update(matches)
+            
+            # If specific patterns didn't work, try to isolate the collection section
+            if not collection_ids:
+                # Try to find the collectionChildren section
+                collection_section_match = re.search(
+                    r'id="collectionChildren"[^>]*>(.*?)</div>\s*</div>\s*<div[^>]*class="[^"]*workshopBrowse',
+                    html, re.DOTALL | re.IGNORECASE
+                )
+                
+                if not collection_section_match:
+                    # Alternative: look for the items section
+                    collection_section_match = re.search(
+                        r'class="collectionChildren[^"]*"[^>]*>(.*?)<div[^>]*class="[^"]*workshopBrowse',
+                        html, re.DOTALL | re.IGNORECASE
+                    )
+                
+                if collection_section_match:
+                    section_html = collection_section_match.group(1)
+                    # Extract IDs only from this section
+                    section_patterns = [
+                        r'sharedfiles/filedetails/\?id=(\d{7,12})',
+                        r'data-publishedfileid=["\']?(\d{7,12})["\']?',
+                        r'id="sharedfile_(\d{7,12})"',
+                    ]
+                    for pattern in section_patterns:
+                        matches = re.findall(pattern, section_html)
+                        collection_ids.update(matches)
+            
+            # Fallback: Use Steam API to get collection items (most accurate)
+            if not collection_ids or len(collection_ids) < 5:
+                progress.setLabelText("Using Steam API to fetch collection items...")
+                QApplication.processEvents()
+                api_ids = self._fetch_collection_items_from_api(collection_id)
+                if api_ids:
+                    collection_ids = set(api_ids)
+            
+            # Last resort: broad pattern but exclude known non-collection sections
+            if not collection_ids:
+                # Get all IDs but try to filter out sidebar items
+                all_ids = set()
+                broad_patterns = [
+                    r'sharedfiles/filedetails/\?id=(\d{7,12})',
+                    r'data-publishedfileid=["\']?(\d{7,12})["\']?',
+                ]
+                for pattern in broad_patterns:
+                    matches = re.findall(pattern, html)
+                    all_ids.update(matches)
+                
+                # Remove IDs that appear in "related" or "popular" sections
+                # These sections usually have specific class names
+                sidebar_section = re.search(
+                    r'class="[^"]*rightcol[^"]*"[^>]*>(.*?)$',
+                    html, re.DOTALL | re.IGNORECASE
+                )
+                sidebar_ids = set()
+                if sidebar_section:
+                    for pattern in broad_patterns:
+                        matches = re.findall(pattern, sidebar_section.group(1))
+                        sidebar_ids.update(matches)
+                
+                collection_ids = all_ids - sidebar_ids
+            
+            # Exclude collection's own ID
+            unique_ids = []
+            for mid in collection_ids:
+                if mid != collection_id and mid not in self.queue_ids:
+                    if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
+                        unique_ids.append(mid)
+            
+            if not unique_ids:
+                progress.close()
+                self.status_label.setText("No new mods found in collection")
+                return
+            
+            if progress.wasCanceled():
+                return
+            
+            progress.setLabelText(f"Fetching names for {len(unique_ids)} mods...")
+            progress.setMaximum(len(unique_ids))
+            progress.setValue(0)
+            QApplication.processEvents()
+            
+            # Batch fetch mod names
+            mod_names = self._fetch_mod_names_batch(unique_ids)
+            
+            if progress.wasCanceled():
+                return
+            
+            progress.setLabelText("Adding mods to queue...")
+            QApplication.processEvents()
+            
+            added = 0
+            for i, wid in enumerate(unique_ids):
+                if progress.wasCanceled():
+                    break
+                name = mod_names.get(wid, f"Workshop Mod {wid}")
+                if self._add_to_queue_direct(wid, name):
+                    added += 1
+                progress.setValue(i + 1)
+                QApplication.processEvents()
+            
+            progress.close()
+            self.url_input.clear()
+            self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
+            
+        except Exception as e:
+            progress.close()
+            self.status_label.setText(f"Failed to parse collection: {e}")
+    
+    def _fetch_collection_items_from_api(self, collection_id: str) -> list[str]:
+        """Fetch collection items using Steam API (most accurate method)."""
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        try:
+            # Steam API endpoint for collection details
+            url = "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/"
+            data = {
+                "collectioncount": 1,
+                "publishedfileids[0]": collection_id
+            }
+            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
+            
+            request = urllib.request.Request(url, data=encoded_data, method='POST')
+            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+            
+            with urllib.request.urlopen(request, timeout=15) as response:
+                result = json.loads(response.read().decode('utf-8'))
+            
+            if 'response' in result and 'collectiondetails' in result['response']:
+                details = result['response']['collectiondetails']
+                if details and len(details) > 0:
+                    collection = details[0]
+                    if 'children' in collection:
+                        return [str(item['publishedfileid']) for item in collection['children']]
+        except Exception as e:
+            # API failed, will fall back to HTML parsing
+            pass
+        
+        return []
     
     def _extract_workshop_id(self, url: str) -> Optional[str]:
         """Extract workshop ID from URL or direct input."""
@@ -568,6 +787,15 @@ class WorkshopBrowser(QWidget):
             self.status_label.setText("Please enter a collection URL")
             return
         
+        # Ensure URL is complete
+        collection_id = self._extract_workshop_id(url)
+        if collection_id and not url.startswith('http'):
+            url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={collection_id}"
+        
+        if not collection_id:
+            self.status_label.setText("Could not extract collection ID from URL")
+            return
+        
         # Create progress dialog
         progress = QProgressDialog("Parsing collection...", "Cancel", 0, 0, self)
         progress.setWindowTitle("Loading Collection")
@@ -580,41 +808,65 @@ class WorkshopBrowser(QWidget):
             import urllib.request
             import urllib.error
             
-            progress.setLabelText("Fetching collection page...")
+            # First try Steam API (most accurate)
+            progress.setLabelText("Fetching collection items from Steam API...")
             QApplication.processEvents()
             
-            request = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
-            )
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                html = response.read().decode('utf-8', errors='replace')
+            collection_ids = self._fetch_collection_items_from_api(collection_id)
             
             if progress.wasCanceled():
                 return
             
-            progress.setLabelText("Extracting mod IDs...")
-            QApplication.processEvents()
+            # If API failed, fall back to HTML parsing
+            if not collection_ids:
+                progress.setLabelText("API failed, fetching page...")
+                QApplication.processEvents()
+                
+                request = urllib.request.Request(
+                    url,
+                    headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
+                )
+                
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    html = response.read().decode('utf-8', errors='replace')
+                
+                if progress.wasCanceled():
+                    return
+                
+                # Check if this is actually a collection
+                is_collection = any(indicator in html for indicator in [
+                    'collectionChildren',
+                    'collectionItemDetails', 
+                    'CollectionItems',
+                    'workshopItemCollection',
+                    'class="collectionItem'
+                ])
+                
+                if not is_collection:
+                    progress.close()
+                    self.status_label.setText("This doesn't appear to be a collection. Use 'Add to Queue' for single mods.")
+                    return
+                
+                progress.setLabelText("Extracting mod IDs from HTML...")
+                QApplication.processEvents()
+                
+                # Use more targeted patterns for collection items
+                collection_patterns = [
+                    r'class="collectionItem[^"]*"[^>]*id="sharedfile_(\d{7,12})"',
+                    r'collectionItem[^>]*href="[^"]*\?id=(\d{7,12})"',
+                    r'class="collectionItem[^"]*"[^>]*data-publishedfileid="(\d{7,12})"',
+                ]
+                
+                for pattern in collection_patterns:
+                    matches = re.findall(pattern, html, re.IGNORECASE)
+                    collection_ids.extend(matches)
+                
+                # Dedupe
+                collection_ids = list(set(collection_ids))
             
-            # Extract mod IDs using multiple patterns
-            pattern1 = r'sharedfiles/filedetails/\?id=(\d{7,12})'
-            pattern2 = r'data-publishedfileid=["\']?(\d{7,12})["\']?'
-            pattern3 = r'[?&]id=(\d{7,12})'
-            pattern4 = r'class="collectionItem[^"]*"[^>]*id="sharedfile_(\d{7,12})"'
-            pattern5 = r'SharedFileBindMouseHover\([^,]*,\s*(\d{7,12})'
-            
-            all_matches = set()
-            for pattern in [pattern1, pattern2, pattern3, pattern4, pattern5]:
-                matches = re.findall(pattern, html)
-                all_matches.update(matches)
-            
-            # Exclude collection's own ID
-            collection_id_match = re.search(r'id=(\d+)', url)
-            collection_id = collection_id_match.group(1) if collection_id_match else None
-            
+            # Exclude collection's own ID and already queued/downloaded
             unique_ids = []
-            for mid in all_matches:
+            for mid in collection_ids:
                 if mid != collection_id and mid not in self.queue_ids:
                     if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
                         unique_ids.append(mid)

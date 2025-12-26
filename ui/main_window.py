@@ -1425,6 +1425,10 @@ class MainWindow(QMainWindow):
         self.available_list.mod_activated.connect(self._activate_mod)
         self.active_list.mod_deactivated.connect(self._deactivate_mod)
         
+        # Uninstall selected mods
+        self.available_list.uninstall_selected.connect(self._uninstall_selected_mods)
+        self.active_list.uninstall_selected.connect(self._uninstall_selected_mods)
+        
         # List controls
         self.available_controls.activate_all.connect(self._activate_all)
         self.active_controls.deactivate_all.connect(self._deactivate_all)
@@ -1989,6 +1993,93 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self, "Uninstall Failed",
                 f"Failed to uninstall mod:\n{e}"
+            )
+    
+    def _uninstall_selected_mods(self, mods: list):
+        """Uninstall multiple selected mods."""
+        from mod_parser import ModSource
+        import shutil
+        
+        if not mods:
+            return
+        
+        # Filter out core game mods
+        uninstallable = [m for m in mods if m.source != ModSource.GAME and m.path and m.path.exists()]
+        skipped = len(mods) - len(uninstallable)
+        
+        if not uninstallable:
+            QMessageBox.warning(
+                self, "Cannot Uninstall",
+                "None of the selected mods can be uninstalled.\n"
+                "Core game files cannot be removed."
+            )
+            return
+        
+        # Build confirmation message
+        mod_names = [m.display_name() for m in uninstallable[:10]]
+        if len(uninstallable) > 10:
+            mod_names.append(f"... and {len(uninstallable) - 10} more")
+        
+        msg = f"Are you sure you want to permanently delete {len(uninstallable)} mod(s)?\n\n"
+        msg += "\n".join(f"• {name}" for name in mod_names)
+        if skipped > 0:
+            msg += f"\n\n({skipped} core game mod(s) will be skipped)"
+        msg += "\n\nThis action cannot be undone!"
+        
+        reply = QMessageBox.warning(
+            self, "Uninstall Mods",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Uninstall mods
+        success_count = 0
+        failed = []
+        
+        for mod in uninstallable:
+            try:
+                mod_name = mod.display_name()
+                
+                # Remove from active list if present
+                self.active_list.remove_mod(mod)
+                
+                # Remove from available list
+                self.available_list.remove_mod(mod)
+                
+                # Delete the folder
+                if mod.path.exists():
+                    shutil.rmtree(mod.path)
+                
+                # Remove from all_mods
+                self.all_mods = [m for m in self.all_mods if m.package_id.lower() != mod.package_id.lower()]
+                
+                success_count += 1
+                
+            except (PermissionError, OSError, IOError) as e:
+                failed.append((mod.display_name(), str(e)))
+        
+        self._update_counts()
+        self._check_conflicts()
+        
+        # Show result
+        if failed:
+            failed_msg = "\n".join(f"• {name}: {err}" for name, err in failed[:5])
+            if len(failed) > 5:
+                failed_msg += f"\n... and {len(failed) - 5} more"
+            QMessageBox.warning(
+                self, "Uninstall Partially Failed",
+                f"Successfully uninstalled {success_count} mod(s).\n"
+                f"Failed to uninstall {len(failed)} mod(s):\n\n{failed_msg}"
+            )
+        else:
+            self.status_bar.showMessage(f"Uninstalled {success_count} mod(s)")
+            QMessageBox.information(
+                self, "Mods Uninstalled",
+                f"Successfully uninstalled {success_count} mod(s)."
             )
     
     def _open_mod_folder(self, mod):
