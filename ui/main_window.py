@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QApplication
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QIcon, QColor
+from PyQt6.QtGui import QAction, QIcon, QColor, QKeySequence, QShortcut
 
 from config_handler import ConfigHandler
 from game_detector import GameDetector, RimWorldInstallation, InstallationType
@@ -935,6 +935,7 @@ class MainWindow(QMainWindow):
         
         self._setup_ui()
         self._setup_menus()
+        self._setup_shortcuts()
         self._connect_signals()
         
         # Initial detection
@@ -1328,6 +1329,62 @@ class MainWindow(QMainWindow):
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+    
+    def _setup_shortcuts(self):
+        """Set up keyboard shortcuts."""
+        # Select all in focused list (Ctrl+A)
+        select_all = QShortcut(QKeySequence("Ctrl+A"), self)
+        select_all.activated.connect(self._shortcut_select_all)
+        
+        # Deselect all (Escape)
+        deselect = QShortcut(QKeySequence("Escape"), self)
+        deselect.activated.connect(self._shortcut_deselect)
+        
+        # Delete/Deactivate selected (Delete)
+        delete_shortcut = QShortcut(QKeySequence("Delete"), self)
+        delete_shortcut.activated.connect(self._shortcut_delete)
+        
+        # Activate selected (Enter when in available list)
+        enter_shortcut = QShortcut(QKeySequence("Return"), self)
+        enter_shortcut.activated.connect(self._shortcut_activate)
+        
+        # Move up (Alt+Up)
+        move_up = QShortcut(QKeySequence("Alt+Up"), self)
+        move_up.activated.connect(self.active_list.move_selected_up)
+        
+        # Move down (Alt+Down)
+        move_down = QShortcut(QKeySequence("Alt+Down"), self)
+        move_down.activated.connect(self.active_list.move_selected_down)
+        
+        # Move to top (Alt+Home)
+        move_top = QShortcut(QKeySequence("Alt+Home"), self)
+        move_top.activated.connect(self.active_list.move_selected_to_top)
+        
+        # Move to bottom (Alt+End)
+        move_bottom = QShortcut(QKeySequence("Alt+End"), self)
+        move_bottom.activated.connect(self.active_list.move_selected_to_bottom)
+    
+    def _shortcut_select_all(self):
+        """Select all items in the focused list."""
+        if self.available_list.hasFocus():
+            self.available_list.selectAll()
+        elif self.active_list.hasFocus():
+            self.active_list.selectAll()
+    
+    def _shortcut_deselect(self):
+        """Deselect all items."""
+        self.available_list.clearSelection()
+        self.active_list.clearSelection()
+    
+    def _shortcut_delete(self):
+        """Deactivate selected mods from active list."""
+        if self.active_list.hasFocus() or self.active_list.selectedItems():
+            self._deactivate_selected()
+    
+    def _shortcut_activate(self):
+        """Activate selected mods from available list."""
+        if self.available_list.hasFocus() or self.available_list.selectedItems():
+            self._activate_selected()
     
     def _connect_signals(self):
         """Connect widget signals."""
@@ -2999,17 +3056,28 @@ class MainWindow(QMainWindow):
 <tr><td><b>Ctrl+Shift+V</b></td><td>Import from code</td></tr>
 <tr><td><b>Ctrl+Q</b></td><td>Quit application</td></tr>
 
+<tr><th colspan="2" style="text-align:left; padding-top:10px;">Selection</th></tr>
+<tr><td><b>Ctrl+A</b></td><td>Select all in focused list</td></tr>
+<tr><td><b>Escape</b></td><td>Deselect all</td></tr>
+<tr><td><b>Return</b></td><td>Activate selected (available list)</td></tr>
+<tr><td><b>Delete</b></td><td>Deactivate selected (active list)</td></tr>
+
+<tr><th colspan="2" style="text-align:left; padding-top:10px;">Load Order</th></tr>
+<tr><td><b>Alt+Up</b></td><td>Move selected up</td></tr>
+<tr><td><b>Alt+Down</b></td><td>Move selected down</td></tr>
+<tr><td><b>Alt+Home</b></td><td>Move to top</td></tr>
+<tr><td><b>Alt+End</b></td><td>Move to bottom</td></tr>
+
 <tr><th colspan="2" style="text-align:left; padding-top:10px;">Navigation</th></tr>
 <tr><td><b>Ctrl+F</b></td><td>Focus search box</td></tr>
 <tr><td><b>Ctrl+,</b></td><td>Open settings</td></tr>
 <tr><td><b>F1</b></td><td>Show this help</td></tr>
-
-<tr><th colspan="2" style="text-align:left; padding-top:10px;">Mod Management</th></tr>
 <tr><td><b>F5</b></td><td>Rescan mods</td></tr>
+
+<tr><th colspan="2" style="text-align:left; padding-top:10px;">Tools</th></tr>
 <tr><td><b>Ctrl+Shift+S</b></td><td>Auto-sort by dependencies</td></tr>
 <tr><td><b>Ctrl+Return</b></td><td>Apply load order</td></tr>
 <tr><td><b>Ctrl+G</b></td><td>Show dependency graph</td></tr>
-<tr><td><b>Double-click</b></td><td>Activate/deactivate mod</td></tr>
 </table>
 
 <p style="margin-top:15px; color:#888;">

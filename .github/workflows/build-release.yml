@@ -75,6 +75,51 @@ jobs:
           
           mv *.deb dist/RimModManager-Linux-x64.deb
       
+      - name: Create AppImage
+        run: |
+          # Download appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          cp dist/RimModManager AppDir/usr/bin/
+          chmod +x AppDir/usr/bin/RimModManager
+          
+          # Convert SVG to PNG for AppImage (use ImageMagick)
+          sudo apt-get install -y imagemagick
+          convert -background none -resize 256x256 resources/icon.svg AppDir/usr/share/icons/hicolor/256x256/apps/rimmodmanager.png
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/rimmodmanager.png AppDir/rimmodmanager.png
+          
+          # Desktop file
+          cat > AppDir/rimmodmanager.desktop << EOF
+          [Desktop Entry]
+          Name=RimModManager
+          Comment=Universal mod manager for RimWorld
+          Exec=RimModManager
+          Icon=rimmodmanager
+          Terminal=false
+          Type=Application
+          Categories=Game;Utility;
+          EOF
+          cp AppDir/rimmodmanager.desktop AppDir/usr/share/applications/
+          
+          # AppRun script
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          exec "${HERE}/usr/bin/RimModManager" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          
+          # Build AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir dist/RimModManager-x86_64.AppImage
+      
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +127,7 @@ jobs:
           path: |
             dist/RimModManager-Linux-x64.tar.gz
             dist/RimModManager-Linux-x64.deb
+            dist/RimModManager-x86_64.AppImage
 
   build-windows:
     runs-on: windows-latest
@@ -194,6 +240,7 @@ jobs:
             | 🪟 Windows | `RimModManager.exe` | Standalone executable |
             | 🐧 Linux | `RimModManager-Linux-x64.tar.gz` | Extract and run `./RimModManager` |
             | 🐧 Linux | `RimModManager-Linux-x64.deb` | Install with `sudo dpkg -i *.deb` |
+            | 🐧 Linux | `RimModManager-x86_64.AppImage` | Portable, just run `chmod +x && ./` |
             | 🍎 macOS | `RimModManager-macOS-x64.zip` | Extract and run the app |
             
             ### 🔧 Requirements
@@ -220,6 +267,7 @@ jobs:
           files: |
             artifacts/linux-build/RimModManager-Linux-x64.tar.gz
             artifacts/linux-build/RimModManager-Linux-x64.deb
+            artifacts/linux-build/RimModManager-x86_64.AppImage
             artifacts/windows-build/RimModManager-Windows-x64.zip
             artifacts/windows-build/RimModManager.exe
             artifacts/macos-build/RimModManager-macOS-x64.zip

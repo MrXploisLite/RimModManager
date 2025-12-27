@@ -31,6 +31,30 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 
 ---
 
+## � Socreenshots
+
+<details>
+<summary><b>Click to view screenshots</b></summary>
+
+### Mod Manager
+![Mod List](Screenshots/image-mods-list.png)
+
+### Workshop Browser
+![Workshop](Screenshots/image-workshop+mods.png)
+
+### Downloads
+![Downloads](Screenshots/image-mods-downloads.png)
+
+### Game Launcher
+![Launcher](Screenshots/image-launchgame.png)
+
+### Keyboard Shortcuts
+![Shortcuts](Screenshots/image-KeyboardShortcuts.png)
+
+</details>
+
+---
+
 ## 📥 Download
 
 **[⬇️ Download Latest Release](https://github.com/MrXploisLite/RimModManager/releases/latest)**
