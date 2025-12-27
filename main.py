@@ -7,6 +7,8 @@ Author: RimWorld Linux Community
 License: MIT
 """
 
+__version__ = "0.1.0"
+
 import sys
 import os
 from pathlib import Path
