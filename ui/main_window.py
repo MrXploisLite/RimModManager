@@ -800,6 +800,17 @@ class SettingsDialog(QDialog):
         ui_layout = QVBoxLayout(ui_group)
         
         from PyQt6.QtWidgets import QCheckBox
+        
+        # Theme selection
+        theme_layout = QHBoxLayout()
+        theme_layout.addWidget(QLabel("Theme:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["System", "Dark", "Light"])
+        self.theme_combo.setToolTip("Select application theme (requires restart)")
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        ui_layout.addLayout(theme_layout)
+        
         self.auto_refresh_check = QCheckBox("Auto-refresh mod list after downloads")
         self.auto_refresh_check.setChecked(True)
         ui_layout.addWidget(self.auto_refresh_check)
@@ -871,6 +882,12 @@ class SettingsDialog(QDialog):
         self.steamcmd_path_edit.setText(self.config.config.steamcmd_path)
         self.check_updates_startup.setChecked(self.config.config.check_updates_on_startup)
         self.disable_webengine_check.setChecked(self.config.config.disable_webengine)
+        
+        # Theme
+        theme = getattr(self.config.config, 'theme', 'System')
+        index = self.theme_combo.findText(theme)
+        if index >= 0:
+            self.theme_combo.setCurrentIndex(index)
     
     def _save_settings(self):
         """Save settings and close dialog."""
@@ -878,6 +895,7 @@ class SettingsDialog(QDialog):
         self.config.config.steamcmd_path = self.steamcmd_path_edit.text()
         self.config.config.check_updates_on_startup = self.check_updates_startup.isChecked()
         self.config.config.disable_webengine = self.disable_webengine_check.isChecked()
+        self.config.config.theme = self.theme_combo.currentText()
         self.config.save()
         self.accept()
     
@@ -1447,6 +1465,30 @@ class MainWindow(QMainWindow):
     def _initial_setup(self):
         """Perform initial setup after window is shown."""
         self._detect_installations()
+        
+        # Check for app updates in background
+        QTimer.singleShot(2000, self._check_app_updates)
+    
+    def _check_app_updates(self):
+        """Check for application updates from GitHub."""
+        try:
+            import urllib.request
+            import json
+            from main import __version__
+            
+            url = "https://api.github.com/repos/MrXploisLite/RimModManager/releases/latest"
+            req = urllib.request.Request(url, headers={'User-Agent': 'RimModManager'})
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                latest_version = data.get('tag_name', '').lstrip('v')
+                
+                if latest_version and latest_version != __version__:
+                    self.status_bar.showMessage(
+                        f"🆕 Update available: v{latest_version} (current: v{__version__})"
+                    )
+        except Exception:
+            pass  # Silently fail - not critical
     
     def _detect_installations(self):
         """Detect RimWorld installations."""
