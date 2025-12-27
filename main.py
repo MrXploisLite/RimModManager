@@ -116,8 +116,16 @@ def main():
     # Set up style
     app.setStyle("Fusion")
     
-    # Check if system prefers dark mode
-    is_dark = app.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    # Get theme preference from config
+    theme = getattr(config.config, 'theme', 'System')
+    
+    # Determine if dark mode should be used
+    if theme == "Dark":
+        is_dark = True
+    elif theme == "Light":
+        is_dark = False
+    else:  # System
+        is_dark = app.palette().color(QPalette.ColorRole.Window).lightness() < 128
     
     if is_dark:
         # Apply dark palette
@@ -142,6 +150,23 @@ def main():
         dark_palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(127, 127, 127))
         
         app.setPalette(dark_palette)
+    else:
+        # Apply light palette for consistency
+        light_palette = QPalette()
+        light_palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+        light_palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.black)
+        light_palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+        light_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+        light_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 220))
+        light_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.black)
+        light_palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.black)
+        light_palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+        light_palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.black)
+        light_palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+        light_palette.setColor(QPalette.ColorRole.Link, QColor(0, 100, 200))
+        light_palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 120, 215))
+        light_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+        app.setPalette(light_palette)
     
     # Create and show main window
     try:

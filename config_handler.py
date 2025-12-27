@@ -66,6 +66,9 @@ class AppConfig:
     # Dark mode preference (None = system, True = dark, False = light)
     dark_mode: Optional[bool] = None
     
+    # Theme preference: "System", "Dark", "Light"
+    theme: str = "System"
+    
     # Active mods list (package IDs in load order) - per installation
     active_mods: dict[str, list[str]] = field(default_factory=dict)
     
