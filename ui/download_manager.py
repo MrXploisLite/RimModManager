@@ -842,7 +842,7 @@ class DownloadLogWidget(QWidget):
             request = urllib.request.Request(url, data=encoded_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
             
             if 'response' in result and 'publishedfiledetails' in result['response']:

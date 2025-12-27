@@ -417,7 +417,7 @@ class WorkshopBrowser(QWidget):
                 headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
             )
             
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 html = response.read().decode('utf-8', errors='replace')
             
             # Check for collection indicators in HTML
@@ -610,7 +610,7 @@ class WorkshopBrowser(QWidget):
             request = urllib.request.Request(url, data=encoded_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
             
             if 'response' in result and 'collectiondetails' in result['response']:
@@ -692,7 +692,7 @@ class WorkshopBrowser(QWidget):
             request = urllib.request.Request(url, data=encoded_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with urllib.request.urlopen(request, timeout=20) as response:
                 result = json.loads(response.read().decode('utf-8'))
             
             if 'response' in result and 'publishedfiledetails' in result['response']:
@@ -776,7 +776,7 @@ class WorkshopBrowser(QWidget):
             request = urllib.request.Request(url, data=encoded_data, method='POST')
             request.add_header('Content-Type', 'application/x-www-form-urlencoded')
             
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
             
             if 'response' in result and 'publishedfiledetails' in result['response']:

@@ -24,7 +24,7 @@ from PyQt6.QtGui import QAction, QIcon, QColor
 from config_handler import ConfigHandler
 from game_detector import GameDetector, RimWorldInstallation, InstallationType
 from mod_parser import ModParser, ModInfo, ModSource
-from workshop_downloader import WorkshopDownloader, ModInstaller, DownloadTask, DownloadStatus
+from workshop_downloader import WorkshopDownloader, ModInstaller
 from ui.mod_widgets import (
     DraggableModList, ModDetailsPanel, ModListControls, ConflictWarningWidget,
     ModSearchFilter
@@ -34,88 +34,6 @@ from ui.download_manager import DownloadLogWidget, SteamCMDChecker, LiveDownload
 
 # Module logger
 log = logging.getLogger("rimmodmanager.ui.main_window")
-
-
-class ScanWorker(QThread):
-    """Background worker for scanning mods."""
-    finished = pyqtSignal(list)
-    progress = pyqtSignal(str)
-    
-    def __init__(self, paths: list[Path], parser: ModParser, source: ModSource = ModSource.LOCAL):
-        super().__init__()
-        self.paths = paths
-        self.parser = parser
-        self.source = source
-        self._cancelled = False
-    
-    def cancel(self):
-        """Cancel the scan operation."""
-        self._cancelled = True
-    
-    def run(self):
-        all_mods = []
-        try:
-            for path in self.paths:
-                if self._cancelled:
-                    break
-                self.progress.emit(f"Scanning {path.name}...")
-                mods = self.parser.scan_directory(path, self.source)
-                all_mods.extend(mods)
-        except (OSError, PermissionError) as e:
-            self.progress.emit(f"Error scanning: {e}")
-        finally:
-            self.finished.emit(all_mods)
-
-
-class DownloadWorker(QThread):
-    """Background worker for downloading workshop mods."""
-    progress = pyqtSignal(DownloadTask)
-    finished = pyqtSignal(DownloadTask)
-    error = pyqtSignal(DownloadTask, str)
-    
-    def __init__(self, downloader: WorkshopDownloader, workshop_ids: list[str]):
-        super().__init__()
-        self.downloader = downloader
-        self.workshop_ids = workshop_ids
-        self._cancelled = False
-    
-    def cancel(self):
-        """Cancel the download operation."""
-        self._cancelled = True
-        if self.downloader:
-            self.downloader.cancel_downloads()
-    
-    def run(self):
-        try:
-            for wid in self.workshop_ids:
-                if self._cancelled:
-                    break
-                    
-                task = DownloadTask(workshop_id=wid)
-                
-                # Hook up signals - use weak reference pattern
-                def on_progress(t, self_ref=self):
-                    if not self_ref._cancelled:
-                        self_ref.progress.emit(t)
-                
-                self.downloader.on_progress = on_progress
-                
-                result = self.downloader.download_single(wid)
-                
-                if self._cancelled:
-                    break
-                
-                if result:
-                    task.status = DownloadStatus.COMPLETE
-                    task.output_path = result
-                    self.finished.emit(task)
-                else:
-                    task.status = DownloadStatus.FAILED
-                    self.error.emit(task, task.error_message or "Download failed")
-        except (OSError, IOError) as e:
-            task = DownloadTask(workshop_id="unknown")
-            task.status = DownloadStatus.FAILED
-            self.error.emit(task, str(e))
 
 
 class PathsDialog(QDialog):
@@ -1014,10 +932,6 @@ class MainWindow(QMainWindow):
         self.all_mods: list[ModInfo] = []
         self.active_mods: list[ModInfo] = []
         self.inactive_mods: list[ModInfo] = []
-        
-        # Workers
-        self.scan_worker: Optional[ScanWorker] = None
-        self.download_worker: Optional[DownloadWorker] = None
         
         self._setup_ui()
         self._setup_menus()
@@ -3437,16 +3351,7 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event."""
-        # Cancel any running workers (these are OUR workers, not the game)
-        if self.scan_worker and self.scan_worker.isRunning():
-            self.scan_worker.cancel()
-            self.scan_worker.wait(1000)  # Wait up to 1 second
-        
-        if self.download_worker and self.download_worker.isRunning():
-            self.download_worker.cancel()
-            self.download_worker.wait(1000)
-        
-        # Clean up download manager worker
+        # Clean up download manager worker if still running
         if hasattr(self, 'download_manager') and self.download_manager:
             if self.download_manager.is_downloading():
                 self.download_manager._cancel_downloads()
@@ -3463,4 +3368,5 @@ class MainWindow(QMainWindow):
         # independent and will continue running after this app closes.
         # We do NOT modify ModsConfig.xml on close - that would break the game.
         
+        event.accept()
         event.accept()
