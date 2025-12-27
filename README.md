@@ -1,19 +1,19 @@
-# I want to talk about why there are so many commits, because there are a lot of trials and sometimes things get stuck my experiments.
+# RimModManager
 
 <div align="center">
 
 **The Ultimate Cross-Platform Mod Manager for RimWorld**
 
 [![CI](https://github.com/MrXploisLite/RimModManager/actions/workflows/ci.yml/badge.svg)](https://github.com/MrXploisLite/RimModManager/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/MrXploisLite/RimModManager?style=flat-square&include_prereleases)](https://github.com/MrXploisLite/RimModManager/releases)
 [![GitHub license](https://img.shields.io/github/license/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/blob/main/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/issues)
 [![GitHub stars](https://img.shields.io/github/stars/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/network/members)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg?style=flat-square)](https://www.riverbankcomputing.com/software/pyqt/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](https://github.com/MrXploisLite/RimModManager)
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Contributing](#contributing)
+[Features](#-features) • [Download](#-download) • [Installation](#-installation) • [Wiki](docs/WIKI.md) • [Contributing](#contributing)
 
 </div>
 
@@ -28,6 +28,19 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 - ✅ **Cross-platform** - Windows, macOS, Linux (including Steam Deck!)
 - ✅ **Workshop downloads** - Download mods without owning the game on Steam
 - ✅ **Conflict detection** - Know which mods break each other
+
+---
+
+## 📥 Download
+
+**[⬇️ Download Latest Release](https://github.com/MrXploisLite/RimModManager/releases/latest)**
+
+| Platform | File | Notes |
+|----------|------|-------|
+| 🪟 Windows | `RimModManager-Windows-x64.zip` | Extract and run |
+| 🐧 Linux | `RimModManager-Linux-x64.tar.gz` | Extract and run |
+| 🐧 Linux | `RimModManager-Linux-x64.deb` | `sudo dpkg -i *.deb` |
+| 🍎 macOS | `RimModManager-macOS-x64.zip` | Extract and run |
 
 ---
 
