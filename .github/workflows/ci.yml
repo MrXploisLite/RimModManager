@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyQt6
+      
+      - name: Run tests
+        run: python -m unittest discover tests/ -v
+      
+      - name: Check syntax errors
+        run: python -m py_compile main.py config_handler.py mod_parser.py game_detector.py workshop_downloader.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Check for syntax errors
+        run: |
+          python -m py_compile main.py
+          python -m py_compile config_handler.py
+          python -m py_compile mod_parser.py
+          python -m py_compile game_detector.py
+          python -m py_compile workshop_downloader.py
+          python -m py_compile ui/main_window.py
+          python -m py_compile ui/mod_widgets.py
+          python -m py_compile ui/workshop_browser.py
+          python -m py_compile ui/download_manager.py
+          python -m py_compile ui/profiles_manager.py
+          python -m py_compile ui/tools_widgets.py
