@@ -287,8 +287,13 @@ class GameLaunchDialog(QDialog):
         self._log(f"[INFO] Windows build: {is_windows}", "#74c0fc")
         
         # Find executable based on platform and build type
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         if is_windows:
             executables = [
@@ -336,8 +341,13 @@ class GameLaunchDialog(QDialog):
     
     def _check_steam_license(self) -> bool:
         """Check if user owns RimWorld on Steam - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         if system == 'windows':
             # Windows Steam paths
@@ -411,8 +421,13 @@ class GameLaunchDialog(QDialog):
     
     def _launch_via_steam(self):
         """Launch via Steam - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         self._log(f"\n[LAUNCH] Starting via Steam...", "#ffd43b")
         
@@ -439,8 +454,13 @@ class GameLaunchDialog(QDialog):
     
     def _launch_direct(self, exe_path: Path, game_path: Path, is_windows: bool):
         """Launch game directly from folder - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         self._log(f"\n[LAUNCH] Starting directly...", "#ffd43b")
         
@@ -913,9 +933,14 @@ class SettingsDialog(QDialog):
     
     def _open_config_dir(self):
         import subprocess
-        import platform
+        import sys
         import os
-        system = platform.system().lower()
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         try:
             if system == 'windows':
@@ -3021,8 +3046,13 @@ class MainWindow(QMainWindow):
     
     def _open_folder(self, path: Path):
         """Open a folder in the default file manager - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         try:
             if system == 'windows':

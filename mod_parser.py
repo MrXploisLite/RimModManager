@@ -372,6 +372,10 @@ class ModParser:
                         if source != ModSource.LOCAL:
                             mod.source = source
                         mods.append(mod)
+            
+            # Save cache after scanning
+            self._save_cache()
+            
         except PermissionError:
             pass
         

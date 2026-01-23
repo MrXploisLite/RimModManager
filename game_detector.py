@@ -20,11 +20,10 @@ log = logging.getLogger("rimmodmanager.game_detector")
 
 def get_platform() -> str:
     """Get current platform: 'windows', 'macos', or 'linux'."""
-    system = platform.system().lower()
-    if system == 'darwin':
-        return 'macos'
-    elif system == 'windows':
+    if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
         return 'windows'
+    elif sys.platform == 'darwin':
+        return 'macos'
     else:
         return 'linux'
 
@@ -211,8 +210,20 @@ class GameDetector:
             Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'GOG Galaxy/Games/RimWorld',
         ]
         
+        # Get active logical drives using Windows API
+        drives = []
+        try:
+            import ctypes
+            bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+            for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                if bitmask & 1:
+                    drives.append(letter)
+                bitmask >>= 1
+        except Exception:
+            drives = list('CDEFGHIJKLMNOPQRSTUVWXYZ')
+
         # Check all drives for GOG installations
-        for drive in 'CDEFGHIJKLMNOPQRSTUVWXYZ':
+        for drive in drives:
             drive_path = Path(f'{drive}:/')
             if drive_path.exists():
                 potential_paths = [

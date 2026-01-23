@@ -29,13 +29,22 @@ def check_dependencies() -> bool:
         missing.append("PyQt6")
     
     if missing:
-        print("Missing required dependencies:")
+        msg = "Missing required dependencies:\n"
         for dep in missing:
-            print(f"  - {dep}")
-        print("\nInstall with:")
-        print("  pip install PyQt6")
-        print("  # or on Arch:")
-        print("  sudo pacman -S python-pyqt6")
+            msg += f"  - {dep}\n"
+        msg += "\nInstall with:\n  pip install PyQt6"
+        
+        print(msg)
+        
+        # Show GUI error on Windows
+        import sys
+        if sys.platform.startswith('win'):
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(0, msg, "RimModManager Error", 0x10)
+            except Exception:
+                pass
+                
         return False
     
     return True
@@ -43,8 +52,15 @@ def check_dependencies() -> bool:
 
 def setup_environment():
     """Set up environment variables and paths - cross-platform."""
-    import platform
-    system = platform.system().lower()
+    import sys
+    import os
+    
+    if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+        system = 'windows'
+    elif sys.platform == 'darwin':
+        system = 'macos'
+    else:
+        system = 'linux'
     
     # Suppress Qt portal warnings and WebEngine debug output
     os.environ["QT_LOGGING_RULES"] = "qt.qpa.services=false;qt.webenginecontext.debug=false"

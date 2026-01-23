@@ -69,8 +69,13 @@ class WorkshopDownloader:
     
     def _find_steamcmd(self) -> str:
         """Find SteamCMD executable - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         if system == 'windows':
             paths_to_check = [
@@ -127,8 +132,13 @@ class WorkshopDownloader:
     
     def get_install_instructions(self) -> str:
         """Get installation instructions for SteamCMD - cross-platform."""
-        import platform
-        system = platform.system().lower()
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            system = 'windows'
+        elif sys.platform == 'darwin':
+            system = 'darwin'
+        else:
+            system = 'linux'
         
         if system == 'windows':
             return """
@@ -558,14 +568,14 @@ class ModInstaller:
     
     def _create_symlink(self, source_path: Path, link_path: Path) -> bool:
         """Create a symbolic link. Falls back to junction on Windows."""
-        import platform
+        import sys
         
         try:
             link_path.symlink_to(source_path)
             return True
         except (OSError, PermissionError) as e:
             # On Windows, fall back to directory junction
-            if platform.system().lower() == 'windows':
+            if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
                 try:
                     import subprocess
                     result = subprocess.run(

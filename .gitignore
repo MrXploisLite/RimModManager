@@ -13,17 +13,29 @@ eggs/
 lib/
 lib64/
 parts/
-sdist/  
+sdist/
 var/
 wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
+# Installer / Build
+*.spec
+*.manifest
+
+# Unit Tests / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
 # Virtual environments
 venv/
 ENV/
 env/
+.venv/
 
 # IDE
 .idea/
@@ -38,6 +50,13 @@ Thumbs.db
 
 # Project specific
 *.log
+rimmodmanager_cache.json
+.rimmodmanager_cache.json
 
-# Kiro IDE
+# Local Configs (if any)
+local_config.json
+secrets.json
+
+# Trae/Kiro IDE
 .kiro/
+.trae/
