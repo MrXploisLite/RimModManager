@@ -50,12 +50,11 @@ class SteamCMDChecker:
     @staticmethod
     def get_platform() -> str:
         """Get current platform."""
-        import platform
-        system = platform.system().lower()
-        if system == 'darwin':
-            return 'macos'
-        elif system == 'windows':
+        import sys
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
             return 'windows'
+        elif sys.platform == 'darwin':
+            return 'macos'
         return 'linux'
     
     @staticmethod

@@ -115,6 +115,29 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 | **Conflict Resolver** | Detect conflicts with fix suggestions |
 | **Enhanced Info** | View Workshop stats (subs, favs, views) |
 | **Smart Launcher** | Auto-detects Steam vs standalone |
+| **Lightweight Mode** | Use system browser to save 100MB+ RAM |
+
+---
+
+## 🔨 Build from Source
+
+You can build a standalone executable that doesn't require Python to run.
+
+1. **Install Requirements**
+   ```bash
+   pip install pyinstaller
+   ```
+
+2. **Build**
+   ```bash
+   python build.py
+   ```
+
+3. **Result**
+   The executable will be in the `dist/` folder.
+   - **Size**: ~60-70MB (Lightweight)
+   - **Compression**: Automatically uses UPX if installed
+   - **Portable**: No installation required
 
 ---
 

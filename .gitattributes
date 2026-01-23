@@ -1,0 +1,21 @@
+# Auto-detect text files and perform LF normalization
+* text=auto
+
+# Custom for Windows
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Custom for Linux/macOS
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.pyc binary
+*.pyd binary

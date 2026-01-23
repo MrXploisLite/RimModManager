@@ -20,11 +20,10 @@ log = logging.getLogger("rimmodmanager.config")
 
 def get_platform() -> str:
     """Get current platform: 'windows', 'macos', or 'linux'."""
-    system = platform.system().lower()
-    if system == 'darwin':
-        return 'macos'
-    elif system == 'windows':
+    if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
         return 'windows'
+    elif sys.platform == 'darwin':
+        return 'macos'
     else:
         return 'linux'
 

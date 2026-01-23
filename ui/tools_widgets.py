@@ -472,6 +472,24 @@ class ConflictResolverWidget(QWidget):
                 self.deactivate_mod.emit(conflict.mod1_id)
 
 
+class EnhancedInfoWorker(QThread):
+    """Background worker for fetching enhanced mod info."""
+    finished = pyqtSignal(dict)  # workshop_id -> EnhancedModInfo
+    error = pyqtSignal(str)
+    
+    def __init__(self, fetcher: EnhancedModInfoFetcher, workshop_id: str):
+        super().__init__()
+        self.fetcher = fetcher
+        self.workshop_id = workshop_id
+        
+    def run(self):
+        try:
+            result = self.fetcher.fetch_info([self.workshop_id])
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class EnhancedModInfoWidget(QWidget):
     """Widget showing enhanced mod information from Workshop."""
     
@@ -479,6 +497,7 @@ class EnhancedModInfoWidget(QWidget):
         super().__init__(parent)
         self.fetcher = EnhancedModInfoFetcher()
         self._current_mod: Optional[ModInfo] = None
+        self._worker: Optional[EnhancedInfoWorker] = None
         self._setup_ui()
     
     def _setup_ui(self):
@@ -584,14 +603,31 @@ class EnhancedModInfoWidget(QWidget):
         self.placeholder.setText("Loading...")
         self.placeholder.setVisible(True)
         self.info_frame.setVisible(False)
-        QApplication.processEvents()
         
-        try:
-            info_dict = self.fetcher.fetch_info([workshop_id])
-        except (OSError, ValueError) as e:
-            self.placeholder.setText(f"Failed to fetch Workshop information: {e}")
+        # Cancel existing worker
+        if self._worker and self._worker.isRunning():
+            self._worker.terminate()
+            self._worker.wait()
+        
+        self._worker = EnhancedInfoWorker(self.fetcher, workshop_id)
+        self._worker.finished.connect(self._on_info_fetched)
+        self._worker.error.connect(self._on_info_error)
+        self._worker.finished.connect(self._cleanup_worker)
+        self._worker.start()
+        
+    def _cleanup_worker(self):
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
+            
+    def _on_info_error(self, error: str):
+        self.placeholder.setText(f"Failed to fetch Workshop information: {error}")
+        
+    def _on_info_fetched(self, info_dict: dict):
+        if not self._current_mod:
             return
-        
+            
+        workshop_id = self._current_mod.steam_workshop_id
         if workshop_id not in info_dict:
             self.placeholder.setText("Failed to fetch Workshop information.\nThe mod may be private or removed.")
             return
