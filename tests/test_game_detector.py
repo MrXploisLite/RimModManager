@@ -125,19 +125,21 @@ class TestRimWorldInstallation(unittest.TestCase):
     
     def test_display_name(self):
         """Test display name generation."""
+        path = Path("/game/RimWorld")
         install = RimWorldInstallation(
-            path=Path("/game/RimWorld"),
+            path=path,
             install_type=InstallationType.STEAM_NATIVE
         )
         display = install.display_name()
         
         self.assertIn("[Steam]", display)
-        self.assertIn("/game/RimWorld", display)
+        self.assertIn(str(path), display)
     
     def test_display_name_proton(self):
         """Test display name for Proton installation."""
+        path = Path("/game/RimWorld")
         install = RimWorldInstallation(
-            path=Path("/game/RimWorld"),
+            path=path,
             install_type=InstallationType.STEAM_PROTON
         )
         display = install.display_name()
@@ -146,14 +148,15 @@ class TestRimWorldInstallation(unittest.TestCase):
     
     def test_str_representation(self):
         """Test string representation."""
+        path = Path("/game/RimWorld")
         install = RimWorldInstallation(
-            path=Path("/game/RimWorld"),
+            path=path,
             install_type=InstallationType.GOG
         )
         
         str_repr = str(install)
         self.assertIn("GOG", str_repr)
-        self.assertIn("/game/RimWorld", str_repr)
+        self.assertIn(str(path), str_repr)
 
 
 class TestLibraryFoldersVdfParsing(unittest.TestCase):

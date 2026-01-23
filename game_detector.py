@@ -9,6 +9,7 @@ Cross-platform RimWorld installation detection:
 import logging
 import os
 import platform
+import sys
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum

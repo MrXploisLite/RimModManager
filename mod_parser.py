@@ -125,6 +125,26 @@ class ModParser:
     def __init__(self):
         self.mods: dict[str, ModInfo] = {}  # package_id -> ModInfo
         self.mod_paths: dict[Path, ModInfo] = {}  # path -> ModInfo
+        self._cache_file = Path.home() / ".rimmodmanager_cache.json"
+        self._cache: dict[str, dict] = {}  # path_str -> {mtime, data}
+        self._load_cache()
+
+    def _load_cache(self):
+        """Load parsed mod cache from disk."""
+        if self._cache_file.exists():
+            try:
+                with open(self._cache_file, 'r', encoding='utf-8') as f:
+                    self._cache = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                self._cache = {}
+    
+    def _save_cache(self):
+        """Save cache to disk."""
+        try:
+            with open(self._cache_file, 'w', encoding='utf-8') as f:
+                json.dump(self._cache, f)
+        except IOError:
+            pass
     
     def parse_mod(self, mod_path: Path) -> Optional[ModInfo]:
         """
