@@ -170,20 +170,15 @@ After installation, restart this application.
             return """
 SteamCMD is required to download Workshop mods.
 
-Arch Linux / CachyOS / EndeavourOS (AUR):
-    yay -S steamcmd
-    # or: paru -S steamcmd
-
 Ubuntu / Debian:
     sudo apt install steamcmd
 
+Arch Linux (AUR):
+    yay -S steamcmd
+    # or: paru -S steamcmd
+
 Fedora:
     sudo dnf install steamcmd
-
-Manual installation (Arch):
-    git clone https://aur.archlinux.org/steamcmd.git
-    cd steamcmd
-    makepkg -si
 
 After installation, restart this application.
 """
