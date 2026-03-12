@@ -795,6 +795,9 @@ class GameDetector:
         Scan common Wine prefix locations for RimWorld installations.
         Used for non-Steam Wine/Proton setups.
         """
+        if PLATFORM == 'windows':
+            return []
+
         found = []
         
         # Common Wine prefix locations
