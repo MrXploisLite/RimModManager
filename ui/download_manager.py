@@ -117,19 +117,12 @@ class SteamCMDChecker:
                 "Then: brew install steamcmd"
             )
         else:  # Linux
-            # Check for AUR helpers
-            if shutil.which("yay"):
-                return "yay -S steamcmd"
-            elif shutil.which("paru"):
-                return "paru -S steamcmd"
-            elif shutil.which("pamac"):
-                return "pamac build steamcmd"
-            elif shutil.which("apt"):
-                return "sudo apt install steamcmd"
-            elif shutil.which("dnf"):
-                return "sudo dnf install steamcmd"
-            else:
-                return "git clone https://aur.archlinux.org/steamcmd.git && cd steamcmd && makepkg -si"
+            # Provide commands for common distributions
+            return (
+                "Ubuntu/Debian: sudo apt install steamcmd\n"
+                "Arch Linux: yay -S steamcmd (or paru)\n"
+                "Fedora: sudo dnf install steamcmd"
+            )
 
 
 def get_mod_name_from_path(mod_path: Path) -> str:

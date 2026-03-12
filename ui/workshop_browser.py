@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
+from game_detector import PLATFORM
 
 # Try to import WebEngine, fallback gracefully if not available
 try:
@@ -202,10 +203,17 @@ class WorkshopBrowser(QWidget):
                 )
             else:
                 # WebEngine not installed
+                if PLATFORM == 'windows':
+                    install_cmd = "pip install PyQt6-WebEngine"
+                elif PLATFORM == 'macos':
+                    install_cmd = "pip install PyQt6-WebEngine"
+                else:  # Linux
+                    install_cmd = "sudo pacman -S python-pyqt6-webengine  # Arch<br>sudo apt install python3-pyqt6.qtwebengine # Ubuntu/Debian"
+
                 fallback = QLabel(
                     "<h3>Web Browser Not Available</h3>"
                     "<p>PyQt6-WebEngine is not installed.</p>"
-                    "<p>Install with: <code>sudo pacman -S python-pyqt6-webengine</code></p>"
+                    f"<p>Install with:<br><code>{install_cmd}</code></p>"
                     "<p>You can still paste Workshop URLs or mod IDs above and add them to the queue.</p>"
                     f"<p><a href='{self.WORKSHOP_URL}'>Open Workshop in Browser</a></p>"
                 )

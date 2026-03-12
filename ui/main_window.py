@@ -22,7 +22,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QColor, QKeySequence, QShortcut
 
 from config_handler import ConfigHandler
-from game_detector import GameDetector, RimWorldInstallation, InstallationType
+from game_detector import GameDetector, RimWorldInstallation, InstallationType, PLATFORM
 from mod_parser import ModParser, ModInfo, ModSource
 from workshop_downloader import WorkshopDownloader, ModInstaller
 from ui.mod_widgets import (
@@ -1619,11 +1619,11 @@ class MainWindow(QMainWindow):
             if install:
                 self.config.add_custom_game_path(path)
                 
-                # For Windows builds without detected config, ask for Proton prefix
-                if install.is_windows_build and not install.config_path:
+                # For Windows builds without detected config (only on non-Windows), ask for Proton prefix
+                if PLATFORM != 'windows' and install.is_windows_build and not install.config_path:
                     reply = QMessageBox.question(
                         self, "Proton/Wine Prefix",
-                        "This appears to be a Windows build.\n\n"
+                        "This appears to be a Windows build running on a non-Windows OS.\n\n"
                         "Would you like to specify a Proton/Wine prefix folder?\n"
                         "This is needed to find/save the game's config (ModsConfig.xml).\n\n"
                         "The prefix folder typically contains a 'drive_c' subfolder.",
@@ -2580,10 +2580,11 @@ class MainWindow(QMainWindow):
         else:
             info += "<b>Save Path:</b> ⚠️ Not detected<br><br>"
         
-        if install.proton_prefix:
-            info += f"<b>Proton/Wine Prefix:</b> ✅<br><code>{install.proton_prefix}</code><br><br>"
-        elif install.is_windows_build:
-            info += "<b>Proton/Wine Prefix:</b> ⚠️ Not set<br><br>"
+        if PLATFORM != 'windows':
+            if install.proton_prefix:
+                info += f"<b>Proton/Wine Prefix:</b> ✅<br><code>{install.proton_prefix}</code><br><br>"
+            elif install.is_windows_build:
+                info += "<b>Proton/Wine Prefix:</b> ⚠️ Not set<br><br>"
         
         # Create dialog
         dialog = QDialog(self)
@@ -2644,8 +2645,8 @@ class MainWindow(QMainWindow):
             btn_clear_override.clicked.connect(clear_override)
             btn_layout.addWidget(btn_clear_override)
         
-        # Add button to set Proton prefix for Windows builds
-        if install.is_windows_build:
+        # Add button to set Proton prefix for Windows builds (only on non-Windows)
+        if PLATFORM != 'windows' and install.is_windows_build:
             btn_set_prefix = QPushButton("🍷 Set Proton/Wine Prefix...")
             def set_prefix():
                 start_path = str(Path.home() / ".local/share/Steam/steamapps/compatdata")
@@ -2677,21 +2678,25 @@ class MainWindow(QMainWindow):
         
         # Warning if no config path
         if not install.config_path:
+            if PLATFORM == 'windows':
+                loc_text = "• Windows: %USERPROFILE%\\AppData\\LocalLow\\Ludeon Studios\\RimWorld by Ludeon Studios\\Config"
+            else:
+                loc_text = ("• Proton: ~/.local/share/Steam/steamapps/compatdata/[APPID]/pfx/drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config<br>"
+                           "• Wine: ~/.wine/drive_c/users/[USER]/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config")
+
             warning = QLabel(
                 "<br><b style='color: orange;'>⚠️ Warning:</b> Without a config path, "
                 "ModsConfig.xml cannot be updated and the game won't load your mods.<br><br>"
                 "<b>Solution:</b> Click 'Set Config Path Override' above and select the folder "
                 "containing your game's ModsConfig.xml file.<br><br>"
-                "Common locations:<br>"
-                "• Proton: ~/.local/share/Steam/steamapps/compatdata/[APPID]/pfx/drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config<br>"
-                "• Wine: ~/.wine/drive_c/users/[USER]/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config"
+                f"Common locations:<br>{loc_text}"
             )
             warning.setWordWrap(True)
             warning.setStyleSheet("font-size: 11px;")
             layout.addWidget(warning)
         
         # Tip for Wine/Proton users about mod disabling
-        if install.is_windows_build:
+        if PLATFORM != 'windows' and install.is_windows_build:
             tip = QLabel(
                 "<br><b style='color: #74c0fc;'>💡 Tip:</b> If mods become disabled when you close "
                 "this app while the game is running, RimWorld's built-in 'disable mods on crash' "
