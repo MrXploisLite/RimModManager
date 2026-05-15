@@ -64,6 +64,22 @@ class TestModImporter(unittest.TestCase):
         fmt = self.importer.detect_format(fake_file)
         self.assertEqual(fmt, ImportFormat.UNKNOWN)
     
+    def test_detect_format_invalid_json_is_unknown(self):
+        """Test malformed JSON is not misclassified."""
+        json_file = self.temp_dir / "invalid.json"
+        json_file.write_text("not valid json {{{")
+
+        fmt = self.importer.detect_format(json_file)
+        self.assertEqual(fmt, ImportFormat.UNKNOWN)
+
+    def test_detect_format_invalid_xml_is_unknown(self):
+        """Test malformed XML is not misclassified."""
+        xml_file = self.temp_dir / "invalid.xml"
+        xml_file.write_text("<ModsConfigData><activeMods></ModsConfigData>")
+
+        fmt = self.importer.detect_format(xml_file)
+        self.assertEqual(fmt, ImportFormat.UNKNOWN)
+
     def test_import_rimsort_json(self):
         """Test importing RimSort JSON format."""
         json_file = self.temp_dir / "rimsort.json"
@@ -151,7 +167,8 @@ https://steamcommunity.com/sharedfiles/filedetails/?id=987654321"""
         result = self.importer.import_file(json_file)
         
         self.assertFalse(result.success)
-        self.assertTrue(len(result.errors) > 0)
+        self.assertEqual(result.format_detected, ImportFormat.UNKNOWN)
+        self.assertTrue(any("invalid or unsupported structured content" in e for e in result.errors))
 
 
 class TestImportResult(unittest.TestCase):
