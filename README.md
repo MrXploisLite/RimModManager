@@ -31,7 +31,7 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 
 ---
 
-## � Socreenshots
+## 📸 Screenshots
 
 <details>
 <summary><b>Click to view screenshots</b></summary>
@@ -147,7 +147,9 @@ You can build a standalone executable that doesn't require Python to run.
 ```bash
 git clone https://github.com/MrXploisLite/RimModManager.git
 cd RimModManager
-pip install PyQt6 PyQt6-WebEngine
+pip install PyQt6
+# Optional for embedded Workshop browser:
+# pip install PyQt6-WebEngine
 python main.py
 ```
 
@@ -156,7 +158,9 @@ python main.py
 
 ```powershell
 # Install Python from https://python.org
-pip install PyQt6 PyQt6-WebEngine
+pip install PyQt6
+# Optional for embedded Workshop browser:
+# pip install PyQt6-WebEngine
 
 # SteamCMD (for Workshop downloads)
 # Option 1: Download from https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
@@ -168,7 +172,9 @@ pip install PyQt6 PyQt6-WebEngine
 <summary><b>🍎 macOS Installation</b></summary>
 
 ```bash
-pip install PyQt6 PyQt6-WebEngine
+pip install PyQt6
+# Optional for embedded Workshop browser:
+# pip install PyQt6-WebEngine
 brew install steamcmd
 ```
 </details>
@@ -184,13 +190,17 @@ yay -S steamcmd
 
 **Ubuntu / Debian:**
 ```bash
-pip install PyQt6 PyQt6-WebEngine
+pip install PyQt6
+# Optional for embedded Workshop browser:
+# pip install PyQt6-WebEngine
 sudo apt install steamcmd
 ```
 
 **Fedora:**
 ```bash
-pip install PyQt6 PyQt6-WebEngine
+pip install PyQt6
+# Optional for embedded Workshop browser:
+# pip install PyQt6-WebEngine
 sudo dnf install steamcmd
 ```
 </details>
@@ -201,7 +211,9 @@ sudo dnf install steamcmd
 ```bash
 # Switch to Desktop Mode
 # Open Konsole and run:
-pip install --user PyQt6 PyQt6-WebEngine
+pip install --user PyQt6
+# Optional for embedded Workshop browser:
+# pip install --user PyQt6-WebEngine
 git clone https://github.com/MrXploisLite/RimModManager.git
 cd RimModManager
 python main.py

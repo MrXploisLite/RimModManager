@@ -72,7 +72,7 @@ class ModImporter:
                     return ImportFormat.RMM_JSON
                     
             except (json.JSONDecodeError, IOError):
-                pass
+                return ImportFormat.UNKNOWN
             return ImportFormat.RMM_JSON
         
         if suffix == ".xml":
@@ -89,8 +89,8 @@ class ModImporter:
                     return ImportFormat.RIMPY_XML
                     
             except ET.ParseError:
-                pass
-            return ImportFormat.RIMPY_XML
+                return ImportFormat.UNKNOWN
+            return ImportFormat.UNKNOWN
         
         if suffix in (".txt", ".list", ".rml"):
             # Check content
@@ -118,13 +118,16 @@ class ModImporter:
         format_type = self.detect_format(file_path)
         
         if format_type == ImportFormat.UNKNOWN:
+            parse_hint = ""
+            if file_path.suffix.lower() in (".json", ".xml"):
+                parse_hint = " (invalid or unsupported structured content)"
             return ImportResult(
                 success=False,
                 format_detected=format_type,
                 package_ids=[],
                 workshop_ids=[],
                 mod_names={},
-                errors=[f"Unknown file format: {file_path.suffix}"],
+                errors=[f"Unknown file format: {file_path.suffix}{parse_hint}"],
                 warnings=[]
             )
         
