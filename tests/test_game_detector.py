@@ -119,6 +119,28 @@ class TestGameDetector(unittest.TestCase):
         detector._detect_custom_paths()
         self.assertEqual(len(detector.installations), 1)
 
+    def test_custom_parent_path_detection(self):
+        """Test detecting RimWorld when custom path points to parent folder."""
+        common_path = self.temp_dir / "steamapps" / "common"
+        rimworld_path = self._create_mock_rimworld(common_path / "RimWorld")
+
+        detector = GameDetector(custom_paths=[str(common_path)])
+        detector._detect_custom_paths()
+
+        self.assertEqual(len(detector.installations), 1)
+        self.assertEqual(detector.installations[0].path, rimworld_path)
+
+    def test_custom_symlink_path_not_duplicated(self):
+        """Test symlink and real path resolve to one installation."""
+        rimworld_path = self._create_mock_rimworld(self.temp_dir / "RimWorld")
+        symlink_path = self.temp_dir / "RimWorldLink"
+        symlink_path.symlink_to(rimworld_path, target_is_directory=True)
+
+        detector = GameDetector(custom_paths=[str(rimworld_path), str(symlink_path)])
+        detector._detect_custom_paths()
+
+        self.assertEqual(len(detector.installations), 1)
+
 
 class TestRimWorldInstallation(unittest.TestCase):
     """Tests for RimWorldInstallation dataclass."""

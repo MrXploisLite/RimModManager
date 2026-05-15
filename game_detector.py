@@ -448,19 +448,39 @@ class GameDetector:
     def _detect_custom_paths(self) -> None:
         """Detect installations in user-defined custom paths."""
         for path_str in self.custom_paths:
-            path = Path(path_str)
-            if path.exists() and self._is_valid_rimworld(path):
-                is_windows = self._is_windows_build(path)
+            path = Path(path_str).expanduser()
+            # Normalize symlinks/relative paths to avoid duplicate entries.
+            try:
+                normalized = path.resolve()
+            except OSError:
+                normalized = path
+
+            candidate_paths = [normalized]
+
+            # Allow users to point to a parent folder and still find the game.
+            # Common examples: ".../steamapps/common" or a generic "Games" directory.
+            if normalized.is_dir() and not self._is_valid_rimworld(normalized):
+                candidate_paths.extend([
+                    normalized / "RimWorld",
+                    normalized / "steamapps" / "common" / "RimWorld",
+                ])
+
+            for candidate in candidate_paths:
+                if not candidate.exists() or not self._is_valid_rimworld(candidate):
+                    continue
+
+                is_windows = self._is_windows_build(candidate)
                 install = RimWorldInstallation(
-                    path=path,
+                    path=candidate,
                     install_type=InstallationType.CUSTOM,
-                    has_mods_folder=(path / "Mods").exists(),
-                    has_data_folder=(path / "Data").exists(),
+                    has_mods_folder=(candidate / "Mods").exists(),
+                    has_data_folder=(candidate / "Data").exists(),
                     is_windows_build=is_windows,
                 )
                 # Check if already detected
-                if not any(i.path == path for i in self.installations):
+                if not any(i.path == candidate for i in self.installations):
                     self.installations.append(install)
+                break
     
     def _is_valid_rimworld(self, path: Path) -> bool:
         """

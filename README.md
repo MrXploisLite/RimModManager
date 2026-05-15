@@ -143,13 +143,19 @@ You can build a standalone executable that doesn't require Python to run.
 
 ## 🚀 Installation
 
+### Requirements
+- Python **3.10+**
+- `PyQt6` (required)
+- `PyQt6-WebEngine` (optional, only for embedded Workshop browser)
+- `steamcmd` (optional, only for Workshop downloads)
+
 ### Quick Start
 ```bash
 git clone https://github.com/MrXploisLite/RimModManager.git
 cd RimModManager
-pip install PyQt6
+python -m pip install PyQt6
 # Optional for embedded Workshop browser:
-# pip install PyQt6-WebEngine
+# python -m pip install PyQt6-WebEngine
 python main.py
 ```
 
@@ -158,9 +164,9 @@ python main.py
 
 ```powershell
 # Install Python from https://python.org
-pip install PyQt6
+python -m pip install PyQt6
 # Optional for embedded Workshop browser:
-# pip install PyQt6-WebEngine
+# python -m pip install PyQt6-WebEngine
 
 # SteamCMD (for Workshop downloads)
 # Option 1: Download from https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
@@ -172,9 +178,9 @@ pip install PyQt6
 <summary><b>🍎 macOS Installation</b></summary>
 
 ```bash
-pip install PyQt6
+python -m pip install PyQt6
 # Optional for embedded Workshop browser:
-# pip install PyQt6-WebEngine
+# python -m pip install PyQt6-WebEngine
 brew install steamcmd
 ```
 </details>
@@ -184,23 +190,25 @@ brew install steamcmd
 
 **Arch / CachyOS / EndeavourOS / Manjaro:**
 ```bash
-sudo pacman -S python python-pyqt6 python-pyqt6-webengine
+sudo pacman -S python python-pyqt6
+# Optional for embedded Workshop browser:
+# sudo pacman -S python-pyqt6-webengine
 yay -S steamcmd
 ```
 
 **Ubuntu / Debian:**
 ```bash
-pip install PyQt6
+python -m pip install PyQt6
 # Optional for embedded Workshop browser:
-# pip install PyQt6-WebEngine
+# python -m pip install PyQt6-WebEngine
 sudo apt install steamcmd
 ```
 
 **Fedora:**
 ```bash
-pip install PyQt6
+python -m pip install PyQt6
 # Optional for embedded Workshop browser:
-# pip install PyQt6-WebEngine
+# python -m pip install PyQt6-WebEngine
 sudo dnf install steamcmd
 ```
 </details>
@@ -211,9 +219,9 @@ sudo dnf install steamcmd
 ```bash
 # Switch to Desktop Mode
 # Open Konsole and run:
-pip install --user PyQt6
+python -m pip install --user PyQt6
 # Optional for embedded Workshop browser:
-# pip install --user PyQt6-WebEngine
+# python -m pip install --user PyQt6-WebEngine
 git clone https://github.com/MrXploisLite/RimModManager.git
 cd RimModManager
 python main.py
