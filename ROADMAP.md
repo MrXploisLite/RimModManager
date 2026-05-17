@@ -1,279 +1,102 @@
 # RimModManager Roadmap
 
-## Version 2.0 - Big Update
-
-### Overview
-7 major features to enhance mod management experience.
+## Current Version: v0.3.0
 
 ---
 
-## Features
+## Completed Features
 
-### 1. Better Search/Filter ✅
-**Status**: Complete  
-**Priority**: High  
-**Effort**: Low
+### v0.1.0 - Foundation
+- [x] Basic mod management (activate/deactivate)
+- [x] Drag-and-drop load order
+- [x] Symlink-based mod activation
+- [x] Steam, GOG, standalone detection (Windows/macOS/Linux)
+- [x] Workshop browser with embedded WebEngine
+- [x] SteamCMD integration for downloads
+- [x] Batch download support
 
-**Description**: Enhanced search and filtering for mod lists.
+### v0.2.0 - Quality of Life
+- [x] Dark/Light theme toggle
+- [x] Auto-update checker
+- [x] Code cleanup (unused imports, variables)
 
-**Features**:
-- [x] Real-time search by name, author, package ID
-- [x] Filter by source (Workshop/Local/DLC)
-- [x] Filter by category
-- [x] Search with debounce (150ms)
-- [x] Multiple search terms (AND logic)
+### v0.2.1 - v0.2.2 - Reliability
+- [x] Mod identity bug fixes (empty package_id handling)
+- [x] Lowercase About.xml support
+- [x] Workshop ID fallback detection
+- [x] Config validation and sanitization
+- [x] Import deduplication (RimPy, RimSort, plain text)
+- [x] macOS GOG detection fix
+- [x] UI networking resilience
 
-**Files**:
-- `ui/mod_widgets.py` - ModSearchFilter widget
+### v0.2.3 - Core Hardening
+- [x] Atomic writes for ModsConfig.xml (crash-safe)
+- [x] SteamCMD path validation before downloads
+- [x] Download retry logic (2 retries, 2s backoff)
+- [x] Single-instance lock (prevent multiple app instances)
+- [x] Bare except clauses replaced with specific exceptions
 
----
+### v0.2.4 - Network Resilience
+- [x] Retry logic for all Steam API calls
+- [x] Workshop ID validation (7-12 digits, range check)
+- [x] Cache corruption detection and auto-removal
+- [x] Download directory write access validation
+- [x] HTTP error handling (distinguish HTTP/URL/JSON errors)
 
-### 2. Mod Categories ✅
-**Status**: Complete  
-**Priority**: High  
-**Effort**: Low
+### v0.2.5 - Game Detection + Fullscreen
+- [x] Linux standalone detection (GOG/manual installs)
+- [x] Nested folder structure support (rimworld_linux/data/noarch/game/)
+- [x] Full screen toggle (F11)
+- [x] Window maximized state save/restore
+- [x] Reset window size option
 
-**Description**: Auto-categorize mods based on keywords and patterns.
-
-**Categories**:
-- 🔧 Framework
-- ✨ Quality of Life
-- ⚔️ Combat & Weapons
-- 🐾 Animals & Creatures
-- 👥 Factions & Races
-- 🏠 Buildings & Furniture
-- 🔨 Crafting & Production
-- 💊 Medical & Health
-- 🔬 Research & Technology
-- 📜 Events & Storyteller
-- 🖥️ UI & Interface
-- 🎨 Textures & Graphics
-- 👕 Apparel & Armor
-- 🚗 Vehicles
-- 📦 Miscellaneous
-
-**Features**:
-- [x] Keyword-based categorization
-- [x] Known mod database
-- [x] Package ID pattern matching
-- [x] Category filter in search
-- [x] Category badges in mod list
-- [x] Category display in details panel
-
-**Files**:
-- `mod_categories.py` - Categorization logic
-
----
-
-### 3. Import from RimPy/RimSort ✅
-**Status**: Complete  
-**Priority**: High  
-**Effort**: Low
-
-**Description**: Import modlists from other mod managers.
-
-**Supported Formats**:
-- [x] RimSort JSON modlist
-- [x] RimPy XML modlist
-- [x] Game's ModsConfig.xml
-- [x] Plain text (package IDs)
-- [x] Workshop IDs list
-- [x] RimModManager JSON
-
-**Features**:
-- [x] Auto-detect format
-- [x] Import dialog with summary
-- [x] Replace or merge options
-- [x] Workshop ID download queue integration
-- [x] Missing mod detection
-
-**Files**:
-- `mod_importer.py` - Import logic for various formats
+### v0.3.0 - Big Update
+- [x] **Auto-Setup Wizard** — First-run guided setup experience
+- [x] **Lutris detection** — Game dirs + YAML config parsing
+- [x] **Bottles detection** — Wine prefix scanning
+- [x] **Heroic Games Launcher detection** — Game dirs + JSON config parsing
+- [x] **Deep prefix search** — Wine/Proton prefix scanning for all launcher types
+- [x] **SteamCMD auto-install** — One-click install on Linux
+- [x] **Lazy Workshop Browser** — Init on first access for faster startup
+- [x] **132 tests passing** — Zero feature loss verified
 
 ---
 
-### 4. Auto-Update Mods ✅
-**Status**: Complete  
-**Priority**: Medium  
-**Effort**: Medium
+## Future Plans (v0.4.0+)
 
-**Description**: Check and download mod updates automatically.
+### Planned Features
+- [ ] **Mod dependency auto-resolution** — Auto-download missing dependencies
+- [ ] **Cloud sync** — Sync mod profiles across devices
+- [ ] **Mod changelog viewer** — View mod update history
+- [ ] **Performance profiler** — Identify slow mod loading
+- [ ] **Mod pack presets** — Curated mod lists for common playstyles
+- [ ] **Better search** — Fuzzy matching, author search, tag filtering
+- [ ] **Mod rating system** — User ratings and reviews
+- [ ] **Auto-backup on game launch** — Backup ModsConfig before playing
+- [ ] **Mod conflict auto-resolve** — Smart suggestions for incompatible mods
+- [ ] **Portable mode** — Run from USB without config in home directory
 
-**Features**:
-- [x] Check all Workshop mods for updates (ModUpdateCheckerWidget)
-- [x] Show update available indicator
-- [x] Batch download updates via SteamCMD
-- [x] Update notification on startup (optional setting)
-- [x] Settings checkbox for auto-check on startup
+### Performance Goals
+- [ ] Reduce startup time by 50%
+- [ ] Memory usage under 150MB with WebEngine disabled
+- [ ] Mod scanning under 2 seconds for 500+ mods
+- [ ] Support 1000+ mods without UI lag
 
-**Files**:
-- `mod_parser.py` - ModUpdateChecker class
-- `ui/tools_widgets.py` - ModUpdateCheckerWidget
-- `config_handler.py` - check_updates_on_startup setting
-- `ui/main_window.py` - SettingsDialog checkbox, _check_updates_on_startup()
-
----
-
-### 5. Mod Presets/Collections ✅
-**Status**: Complete  
-**Priority**: Medium  
-**Effort**: Medium
-
-**Description**: Share modlists via compact codes.
-
-**Features**:
-- [x] Export modlist as shareable code (base64+zlib)
-- [x] Import from code
-- [x] Copy code to clipboard
-- [x] Replace or merge options
-- [x] Workshop ID extraction for missing mods
-
-**Format**:
-```
-RMM:v1:<base64_compressed_json>
-```
-
-**Menu**:
-- File → Export as Shareable Code... (Ctrl+Shift+C)
-- File → Import from Code... (Ctrl+Shift+V)
-
-**Files**:
-- `mod_presets.py` - PresetEncoder class (encode/decode)
-- `ui/main_window.py` - _export_preset_code(), _import_preset_code(), _apply_preset()
+### Platform Goals
+- [ ] Flatpak packaging for Linux
+- [ ] Homebrew tap for macOS
+- [ ] Winget package for Windows
+- [ ] Better Steam Deck controller support
 
 ---
 
-### 6. Mod Conflict Visualization ✅
-**Status**: Complete  
-**Priority**: Medium  
-**Effort**: Medium
-
-**Description**: Visual graph showing mod dependencies and conflicts.
-
-**Features**:
-- [x] Interactive dependency graph (QGraphicsView)
-- [x] Nodes = mods (draggable), Edges = dependencies
-- [x] Color coding:
-  - Green: Satisfied dependency
-  - Red: Conflict/Incompatible
-  - Yellow: Missing dependency
-  - Blue: Load order issue
-- [x] Click node to select mod in list
-- [x] Zoom and pan (mouse wheel + drag)
-- [x] Hierarchical and circular layouts
-- [x] Filter by connection type
-
-**Menu**: Tools → 🔗 Dependency Graph... (Ctrl+G)
-
-**Files**:
-- `ui/graph_view.py` - ModGraphView, ModNode, ModEdge, ConflictGraphDialog
+## Technical Debt
+- [ ] Migrate from urllib to aiohttp for async network requests
+- [ ] Add type hints to all public APIs
+- [ ] Increase test coverage to 80%+
+- [ ] Add integration tests for full workflows
+- [ ] Document all public APIs with docstrings
 
 ---
 
-### 7. Compatibility Database ✅
-**Status**: Complete  
-**Priority**: Medium  
-**Effort**: Medium
-
-**Description**: Use community-maintained sorting rules.
-
-**Data Source**: RimSort Community Rules Database
-- URL: https://github.com/RimSort/Community-Rules-Database
-- Format: `communityRules.json`
-
-**Features**:
-- [x] Download community rules from GitHub
-- [x] Apply rules to auto-sort (topological sort)
-- [x] Cache locally with 24h expiry
-- [x] Manual refresh option
-- [x] Check load order against rules
-- [x] Show issues with severity levels
-
-**Menu**: Tools → 📚 Community Rules →
-- Download/Update Rules...
-- Check Load Order...
-- Sort by Community Rules
-
-**Files**:
-- `compatibility_db.py` - CompatibilityDatabase class
-- `ui/main_window.py` - _download_community_rules(), _check_community_rules(), _sort_by_community_rules()
-
----
-
-## Implementation Order
-
-```
-Sprint 1 (Quick Wins): ✅ COMPLETE
-├── 1. Better Search/Filter ✅
-├── 2. Mod Categories ✅
-└── 3. Import RimPy/RimSort ✅
-
-Sprint 2 (Core Features): ✅ COMPLETE
-├── 4. Auto-Update Mods ✅
-└── 5. Mod Presets/Collections ✅
-
-Sprint 3 (Advanced): ✅ COMPLETE
-├── 6. Conflict Graph View ✅
-└── 7. Compatibility Database ✅
-```
-
-🎉 **Version 2.0 Complete!**
-
----
-
-## Technical Notes
-
-### Dependencies
-- No new dependencies required
-- Uses existing PyQt6 components
-- QGraphicsView for graph (built-in)
-
-### File Structure
-```
-rimmodmanager/
-├── mod_categories.py      # NEW: Auto-categorization ✅
-├── mod_importer.py        # NEW: RimPy/RimSort import ✅
-├── mod_presets.py         # NEW: Shareable collections ✅
-├── compatibility_db.py    # NEW: Community rules DB ✅
-├── ui/
-│   └── graph_view.py      # NEW: Dependency graph ✅
-```
-
-### Data Formats
-
-**RimSort Modlist JSON**:
-```json
-{
-  "name": "My Modlist",
-  "mods": ["packageid1", "packageid2", ...]
-}
-```
-
-**Shareable Preset Code**:
-```
-RMM:v1:eJxLy0...base64...
-```
-
-**Community Rules JSON**:
-```json
-{
-  "rules": {
-    "package.id": {
-      "loadBefore": ["other.mod"],
-      "loadAfter": ["another.mod"]
-    }
-  }
-}
-```
-
----
-
-## Changelog
-
-### [Unreleased]
-- Started roadmap planning
-- Research completed for all features
-
----
-
-*Last Updated: 2025-12-25*
+*Last Updated: 2026-05-17*

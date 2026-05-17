@@ -119,11 +119,28 @@ coverage report -m
 ```
 tests/
 ├── __init__.py
-├── test_config_handler.py   # Config save/load tests
-├── test_game_detector.py    # Installation detection tests
-├── test_mod_importer.py     # Import format tests
-├── test_mod_parser.py       # XML parsing, load order tests
-└── test_mod_presets.py      # Preset encoding tests
+├── test_config_handler.py       # Config save/load tests
+├── test_game_detector.py        # Installation detection tests
+├── test_mod_importer.py         # Import format tests
+├── test_mod_parser.py           # XML parsing, load order tests
+├── test_mod_presets.py          # Preset encoding tests
+├── test_v023_reliability.py     # Atomic writes, retry logic, lock tests
+├── test_v024_network.py         # Network resilience, validation tests
+├── test_v025_detection_ui.py    # Standalone detection, fullscreen tests
+└── test_v030_big_update.py      # Setup wizard, expanded detection tests
+```
+
+### Running Tests
+```bash
+# Run all tests with pytest (recommended)
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_mod_parser.py -v
+
+# Run with coverage
+pip install pytest-cov
+python -m pytest tests/ --cov=. --cov-report=term-missing
 ```
 
 ### Writing Tests
@@ -206,20 +223,29 @@ class MyClass:
 
 ```
 rimmodmanager/
-├── main.py                 # Entry point
-├── config_handler.py       # Config management
-├── game_detector.py        # Installation detection
-├── mod_parser.py           # Mod parsing, profiles, backups
-├── workshop_downloader.py  # SteamCMD integration
+├── main.py                     # Entry point
+├── config_handler.py           # Config management
+├── game_detector.py            # Installation detection (Steam, GOG, Lutris, Bottles, Heroic)
+├── mod_parser.py               # Mod parsing, profiles, backups
+├── mod_importer.py             # Import from RimPy/RimSort/ModsConfig
+├── mod_presets.py              # Shareable modlist codes
+├── mod_categories.py           # Auto-categorization
+├── compatibility_db.py         # Community rules database
+├── workshop_downloader.py      # SteamCMD integration
+├── logger.py                   # Logging configuration
+├── build.py                    # PyInstaller build script
 ├── ui/
-│   ├── main_window.py      # Main UI
-│   ├── mod_widgets.py      # Mod list widgets
-│   ├── workshop_browser.py # Workshop browser
-│   ├── download_manager.py # Download progress
-│   ├── profiles_manager.py # Profiles UI
-│   └── tools_widgets.py    # Tools UI
-├── tests/                  # Unit tests
-└── docs/                   # Documentation
+│   ├── main_window.py          # Main UI
+│   ├── mod_widgets.py          # Mod list widgets
+│   ├── workshop_browser.py     # Workshop browser
+│   ├── download_manager.py     # Download progress
+│   ├── profiles_manager.py     # Profiles UI
+│   ├── tools_widgets.py        # Tools UI
+│   ├── graph_view.py           # Dependency graph
+│   └── setup_wizard.py         # First-run setup wizard
+├── tests/                      # Unit tests (132 tests)
+├── docs/                       # Documentation
+└── resources/                  # Icons, images
 ```
 
 ## Questions?

@@ -12,7 +12,16 @@
 
 ## Getting Started
 
-### First Launch
+### First Launch — Auto-Setup Wizard
+On your first launch, RimModManager shows a **guided setup wizard**:
+1. **Step 1**: Auto-detects RimWorld installations (Steam, GOG, Lutris, Bottles, Heroic, standalone)
+2. **Step 2**: Checks for SteamCMD — can auto-install on Linux with one click
+3. **Step 3**: Summary — click Finish and you're ready!
+
+No manual configuration needed — the wizard handles everything automatically.
+
+### Manual Setup (Skip Wizard)
+If you skip the wizard:
 1. Run `python main.py` or the executable
 2. RimModManager auto-detects RimWorld installations
 3. Select your installation from the dropdown
@@ -22,7 +31,7 @@
 - **Mod Manager Tab**: Main mod list management
 - **Workshop Tab**: Browse and download mods
 - **Downloads Tab**: Monitor download progress
-- **Tools Tab**: Update checker, conflict resolver
+- **Tools Tab**: Update checker, conflict resolver, profiles
 
 ---
 
@@ -34,7 +43,7 @@ RimModManager detects these installation types:
 |----------|----------------|
 | Windows | Steam, GOG, Standalone |
 | macOS | Steam, GOG, Standalone |
-| Linux | Steam Native, Proton, Flatpak, Wine, Lutris, Bottles |
+| Linux | Steam Native, Proton, Flatpak, Wine, Lutris, Bottles, Heroic, Standalone |
 
 ### Adding Custom Paths
 1. Click "➕ Add Custom" button
@@ -120,6 +129,11 @@ Auto-backup before major changes:
 
 ## Troubleshooting
 
+### First-Time Setup
+- The **Auto-Setup Wizard** runs automatically on first launch
+- It auto-detects RimWorld and can install SteamCMD for you
+- To re-run setup: delete `first_run` from `config.json` or add custom paths manually
+
 ### SteamCMD Not Found
 Install SteamCMD:
 ```bash
@@ -168,6 +182,10 @@ RimModManager writes proper format:
 | Ctrl+R | Refresh mods |
 | Delete | Deactivate selected |
 | F5 | Rescan mods |
+| F11 | Toggle full screen |
+| Ctrl+G | Dependency graph |
+| Ctrl+Shift+S | Auto-sort by dependencies |
+| Ctrl+Return | Apply load order |
 
 ---
 

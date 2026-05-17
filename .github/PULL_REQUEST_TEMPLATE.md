@@ -13,10 +13,10 @@ Fixes #(issue number)
 ## Testing
 Describe the tests you ran to verify your changes.
 
-- [ ] Tested on Arch Linux
-- [ ] Tested with Steam Native installation
-- [ ] Tested with Proton installation
-- [ ] Tested with Flatpak Steam
+- [ ] Tested on Linux
+- [ ] Tested on Windows (if applicable)
+- [ ] Tested on macOS (if applicable)
+- [ ] All tests pass (`python -m pytest tests/ -v`)
 
 ## Checklist
 - [ ] My code follows the project's style guidelines

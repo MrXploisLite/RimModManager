@@ -4,7 +4,6 @@
 
 **The Ultimate Cross-Platform Mod Manager for RimWorld**
 
-[![CI](https://github.com/MrXploisLite/RimModManager/actions/workflows/ci.yml/badge.svg)](https://github.com/MrXploisLite/RimModManager/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/MrXploisLite/RimModManager?style=flat-square&include_prereleases)](https://github.com/MrXploisLite/RimModManager/releases)
 [![GitHub license](https://img.shields.io/github/license/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/blob/main/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/MrXploisLite/RimModManager?style=flat-square)](https://github.com/MrXploisLite/RimModManager/issues)
@@ -77,7 +76,8 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 ### 🎮 Universal Game Detection
 - **Windows**: Steam, GOG, standalone
 - **macOS**: Steam, GOG, standalone  
-- **Linux**: Steam native, Proton, Flatpak, Wine, Lutris, Bottles
+- **Linux**: Steam native, Proton, Flatpak, Wine, Lutris, Bottles, Heroic, standalone
+- **Auto-Setup Wizard**: First-run guided setup — zero manual config needed
 
 ### 📦 Mod Management
 - Drag-and-drop load order
@@ -232,11 +232,17 @@ python main.py
 
 ## 📖 Usage
 
-1. **Launch** RimModManager with `python main.py`
-2. **Select** your RimWorld installation from dropdown
-3. **Manage** mods with drag-and-drop or hover buttons
-4. **Apply** changes with "Apply Load Order"
-5. **Play** with the built-in launcher
+### First Launch
+1. Run `python main.py` or the executable
+2. The **Auto-Setup Wizard** guides you through setup
+3. RimWorld installations are auto-detected
+4. SteamCMD is auto-installed if needed
+
+###日常管理
+1. **Select** your RimWorld installation from dropdown
+2. **Manage** mods with drag-and-drop or hover buttons
+3. **Apply** changes with "Apply Load Order"
+4. **Play** with the built-in launcher
 
 ### Config Locations
 | Platform | Path |
@@ -263,7 +269,10 @@ python main.py
 <details>
 <summary><b>No installations detected</b></summary>
 
-Click "➕ Add Custom" and browse to your RimWorld folder containing `RimWorldWin64.exe` or `RimWorldLinux`.
+On first launch, the **Auto-Setup Wizard** will automatically scan your system. You can also:
+- Click "🔄 Detect" to re-scan
+- Click "➕ Add Custom" and browse to your RimWorld folder
+- Supported: Steam, GOG, Lutris, Bottles, Heroic, and standalone installs
 </details>
 
 <details>

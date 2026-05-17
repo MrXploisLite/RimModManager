@@ -10,10 +10,10 @@ assignees: ''
 A clear and concise description of the bug.
 
 ## Environment
-- **OS**: (e.g., Arch Linux, CachyOS, Manjaro)
+- **OS**: (e.g., Arch Linux, CachyOS, Ubuntu, Windows 11, macOS)
 - **Python Version**: 
 - **PyQt6 Version**: 
-- **RimWorld Install Type**: (Steam Native / Proton / Flatpak / Wine)
+- **RimWorld Install Type**: (Steam Native / Proton / Flatpak / Wine / GOG / Lutris / Bottles / Heroic / Standalone)
 
 ## Steps to Reproduce
 1. Go to '...'
