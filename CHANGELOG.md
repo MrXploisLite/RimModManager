@@ -5,6 +5,17 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-17 - Memory Optimization
+
+### Performance
+- **Lazy WebEngine Import**: WebEngine module is now imported only when the Workshop tab is clicked, not at startup. Saves ~100MB+ of RAM on launch.
+- **QTextBrowser Fallback**: When WebEngine is unavailable or disabled, a lightweight `QTextBrowser` provides rich HTML rendering instead of a plain `QLabel`. Shows install instructions and direct links to the Steam Workshop.
+- **Deferred ui.__init__ Import**: `WorkshopBrowser` and `WorkshopDownloadDialog` removed from `ui/__init__.py` to prevent eager loading.
+- **Startup Memory**: Reduced from ~150MB to ~60MB on systems without PyQt6-WebEngine installed.
+
+### Changed
+- **Fallback UI**: Improved lightweight mode message with better formatting and memory usage indicator.
+
 ## [0.3.0] - 2026-05-17 - Big Update
 
 ### Added

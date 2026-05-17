@@ -29,7 +29,8 @@ from ui.mod_widgets import (
     DraggableModList, ModDetailsPanel, ModListControls, ConflictWarningWidget,
     ModSearchFilter
 )
-from ui.workshop_browser import WorkshopBrowser
+# LAZY IMPORT: WorkshopBrowser is heavy, only import when needed
+# from ui.workshop_browser import WorkshopBrowser
 from ui.download_manager import DownloadLogWidget, SteamCMDChecker
 from ui.setup_wizard import SetupWizard
 
@@ -2978,6 +2979,9 @@ class MainWindow(QMainWindow):
     
     def _init_workshop_browser(self):
         """Initialize or reinitialize the Workshop browser."""
+        # LAZY IMPORT: Only import when actually needed
+        from ui.workshop_browser import WorkshopBrowser
+        
         if not self.downloader:
             return
         

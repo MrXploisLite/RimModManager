@@ -11,7 +11,8 @@ from .mod_widgets import (
     ConflictWarningWidget
 )
 from .main_window import MainWindow
-from .workshop_browser import WorkshopBrowser, WorkshopDownloadDialog
+# LAZY IMPORT: WorkshopBrowser loaded on-demand to save memory
+# from .workshop_browser import WorkshopBrowser, WorkshopDownloadDialog
 from .download_manager import DownloadLogWidget, SteamCMDChecker
 from .profiles_manager import ProfilesManagerWidget, ProfilesTab, BackupsTab, ImportExportTab
 from .tools_widgets import (
@@ -34,8 +35,8 @@ __all__ = [
     'ModListControls',
     'ConflictWarningWidget',
     'MainWindow',
-    'WorkshopBrowser',
-    'WorkshopDownloadDialog',
+    # 'WorkshopBrowser',  # Lazy loaded
+    # 'WorkshopDownloadDialog',  # Lazy loaded
     'DownloadLogWidget',
     'SteamCMDChecker',
     'ProfilesManagerWidget',
