@@ -31,6 +31,7 @@ from ui.mod_widgets import (
 )
 from ui.workshop_browser import WorkshopBrowser
 from ui.download_manager import DownloadLogWidget, SteamCMDChecker
+from ui.setup_wizard import SetupWizard
 
 # Module logger
 log = logging.getLogger("rimmodmanager.ui.main_window")
@@ -976,8 +977,11 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         self._connect_signals()
         
-        # Initial detection
-        QTimer.singleShot(100, self._initial_setup)
+        # Show setup wizard on first run
+        if self.config.config.first_run:
+            QTimer.singleShot(200, self._show_setup_wizard)
+        else:
+            QTimer.singleShot(100, self._initial_setup)
     
     def _setup_ui(self):
         """Set up the main UI layout."""
@@ -1498,6 +1502,36 @@ class MainWindow(QMainWindow):
         self._init_workshop_browser()
         
         self.status_bar.showMessage("Workshop browser ready")
+    
+    def _show_setup_wizard(self):
+        """Show first-run setup wizard."""
+        wizard = SetupWizard(self)
+        wizard.setup_complete.connect(self._on_setup_complete)
+        wizard.exec()
+    
+    def _on_setup_complete(self, installations: list, steamcmd_path: str):
+        """Handle setup wizard completion."""
+        # Mark first run as complete
+        self.config.config.first_run = False
+        self.config.save()
+        
+        # Apply SteamCMD path if found
+        if steamcmd_path:
+            self.config.config.steamcmd_path = steamcmd_path
+            self.config.save()
+        
+        # Apply installations if found
+        if installations:
+            for inst in installations:
+                if inst.path and str(inst.path) not in self.config.config.custom_game_paths:
+                    self.config.config.custom_game_paths.append(str(inst.path))
+            self.config.save()
+        
+        # Update game detector with new paths
+        self.game_detector.custom_paths = self.config.config.custom_game_paths
+        
+        # Run initial setup
+        self._initial_setup()
     
     def _initial_setup(self):
         """Perform initial setup after window is shown."""

@@ -5,6 +5,23 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-17 - Big Update
+
+### Added
+- **Auto-Setup Wizard**: First-run experience that automatically detects RimWorld installations and helps install SteamCMD. No manual configuration needed — just click through and you're ready!
+- **Expanded Game Detection**: Added detection for **Lutris**, **Bottles**, and **Heroic Games Launcher** in addition to existing Steam, GOG, and standalone support.
+- **Deep Prefix Search**: Game detector now searches Wine/Proton prefixes for RimWorld installations in Lutris, Bottles, and Heroic.
+- **Config Parsing**: Parses Lutris YAML configs and Heroic JSON configs to find custom game paths.
+
+### Changed
+- **First-Run Experience**: New users now see a guided setup wizard instead of being dropped into an empty UI.
+- **SteamCMD Auto-Install**: Setup wizard can automatically install SteamCMD on Linux (via apt or manual download).
+- **Game Detector Coverage**: Now scans 10+ sources: Steam (native/Proton/Flatpak), GOG, standalone, Lutris, Bottles, Heroic, and external drives.
+
+### Performance
+- **Lazy Workshop Browser**: Workshop browser tab now initializes only when first accessed, reducing startup memory.
+- **Optimized Mod Scanning**: Reduced redundant file system calls during mod directory scanning.
+
 ## [0.2.5] - 2026-05-17
 
 ### Fixed

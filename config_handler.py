@@ -78,6 +78,9 @@ class AppConfig:
     # Performance settings
     disable_webengine: bool = False  # Disable WebEngine for lower memory usage
     
+    # First run flag - show setup wizard on first launch
+    first_run: bool = True
+    
     # Config path overrides per installation (for standalone/Wine games)
     # Key: installation path, Value: config folder path
     config_path_overrides: dict[str, str] = field(default_factory=dict)
@@ -167,6 +170,7 @@ class ConfigHandler:
             'check_updates_on_startup',
             'disable_webengine',
             'window_maximized',
+            'first_run',
         }
 
         if key in string_keys:

@@ -3,9 +3,10 @@ Game Detector for RimModManager
 Cross-platform RimWorld installation detection:
 - Windows: Steam, GOG, standalone
 - macOS: Steam, GOG, standalone
-- Linux: Steam native, Proton, Flatpak, Wine, standalone
+- Linux: Steam native, Proton, Flatpak, Wine, Lutris, Bottles, Heroic, standalone
 """
 
+import json
 import logging
 import os
 import platform
@@ -134,6 +135,9 @@ class GameDetector:
             self._detect_steam_proton()
             self._detect_flatpak_steam()
             self._detect_linux_standalone()
+            self._detect_lutris()
+            self._detect_bottles()
+            self._detect_heroic()
         
         # Check custom paths (all platforms)
         self._detect_custom_paths()
@@ -380,6 +384,214 @@ class GameDetector:
         )
         self.installations.append(install)
         log.info(f"Detected standalone RimWorld at: {game_path}")
+    
+    def _detect_lutris(self) -> None:
+        """
+        Detect RimWorld installed via Lutris.
+        Lutris stores games in ~/.local/share/lutris/runners/wine/ or custom paths.
+        Also checks ~/.config/lutris/ for game configurations.
+        """
+        lutris_base = Path.home() / ".local/share/lutris"
+        lutris_config = Path.home() / ".config/lutris"
+        
+        # Search in Lutris game directories
+        lutris_game_dirs = [
+            lutris_base / "games",
+            Path.home() / "Games/lutris",
+        ]
+        
+        for base in lutris_game_dirs:
+            if not base.exists():
+                continue
+            try:
+                for game_folder in base.iterdir():
+                    if not game_folder.is_dir():
+                        continue
+                    # Check for RimWorld in game folder
+                    if self._is_valid_rimworld(game_folder):
+                        self._add_lutris_install(game_folder)
+                        continue
+                    # Check for drive_c structure (Wine prefix)
+                    drive_c = game_folder / "drive_c"
+                    if drive_c.exists():
+                        self._search_prefix_for_rimworld(game_folder, InstallationType.PROTON_STANDALONE)
+            except PermissionError:
+                pass
+        
+        # Parse Lutris config for custom game paths
+        if lutris_config.exists():
+            try:
+                for cfg_file in lutris_config.glob("*.yml"):
+                    self._parse_lutris_config(cfg_file)
+            except (PermissionError, OSError):
+                pass
+    
+    def _add_lutris_install(self, game_path: Path) -> None:
+        """Add a Lutris installation."""
+        if any(i.path == game_path for i in self.installations):
+            return
+        
+        install = RimWorldInstallation(
+            path=game_path,
+            install_type=InstallationType.PROTON_STANDALONE,
+            has_mods_folder=(game_path / "Mods").exists(),
+            has_data_folder=(game_path / "Data").exists(),
+            is_windows_build=self._is_windows_build(game_path),
+        )
+        self.installations.append(install)
+        log.info(f"Detected Lutris RimWorld at: {game_path}")
+    
+    def _detect_bottles(self) -> None:
+        """
+        Detect RimWorld installed via Bottles.
+        Bottles stores games in ~/.var/app/com.usebottles.bottles/data/bottles/bottles/
+        or ~/.local/share/bottles/bottles/.
+        """
+        bottles_paths = [
+            Path.home() / ".var/app/com.usebottles.bottles/data/bottles/bottles",
+            Path.home() / ".local/share/bottles/bottles",
+        ]
+        
+        for bottles_base in bottles_paths:
+            if not bottles_base.exists():
+                continue
+            try:
+                for bottle in bottles_base.iterdir():
+                    if not bottle.is_dir():
+                        continue
+                    # Check for drive_c structure
+                    drive_c = bottle / "drive_c"
+                    if drive_c.exists():
+                        self._search_prefix_for_rimworld(bottle, InstallationType.PROTON_STANDALONE)
+            except PermissionError:
+                pass
+    
+    def _detect_heroic(self) -> None:
+        """
+        Detect RimWorld installed via Heroic Games Launcher.
+        Heroic stores games in ~/Games/Heroic/ or custom library paths.
+        Also checks ~/.config/heroic/ for game configurations.
+        """
+        heroic_dirs = [
+            Path.home() / "Games/Heroic",
+            Path.home() / "Games/heroic",
+        ]
+        
+        # Check for Heroic library json files
+        heroic_config = Path.home() / ".config/heroic"
+        
+        for base in heroic_dirs:
+            if not base.exists():
+                continue
+            try:
+                for game_folder in base.iterdir():
+                    if not game_folder.is_dir():
+                        continue
+                    if self._is_valid_rimworld(game_folder):
+                        self._add_heroic_install(game_folder)
+                        continue
+                    # Check nested structures
+                    drive_c = game_folder / "drive_c"
+                    if drive_c.exists():
+                        self._search_prefix_for_rimworld(game_folder, InstallationType.PROTON_STANDALONE)
+            except PermissionError:
+                pass
+        
+        # Parse Heroic config for custom install paths
+        if heroic_config.exists():
+            try:
+                # Heroic stores library info in JSON files
+                for json_file in heroic_config.rglob("*.json"):
+                    if "store" in json_file.name.lower() or "library" in json_file.name.lower():
+                        self._parse_heroic_config(json_file)
+            except (PermissionError, OSError):
+                pass
+    
+    def _add_heroic_install(self, game_path: Path) -> None:
+        """Add a Heroic installation."""
+        if any(i.path == game_path for i in self.installations):
+            return
+        
+        install = RimWorldInstallation(
+            path=game_path,
+            install_type=InstallationType.PROTON_STANDALONE,
+            has_mods_folder=(game_path / "Mods").exists(),
+            has_data_folder=(game_path / "Data").exists(),
+            is_windows_build=self._is_windows_build(game_path),
+        )
+        self.installations.append(install)
+        log.info(f"Detected Heroic RimWorld at: {game_path}")
+    
+    def _search_prefix_for_rimworld(self, prefix_path: Path, install_type: InstallationType) -> None:
+        """Search a Wine/Proton prefix for RimWorld installation."""
+        if any(i.proton_prefix == prefix_path for i in self.installations):
+            return
+        
+        # Common RimWorld locations in Wine prefixes
+        search_paths = [
+            "drive_c/Program Files/RimWorld",
+            "drive_c/Program Files (x86)/RimWorld",
+            "drive_c/Games/RimWorld",
+            "drive_c/GOG Games/RimWorld",
+            "drive_c/Program Files/Steam/steamapps/common/RimWorld",
+            "drive_c/Program Files (x86)/Steam/steamapps/common/RimWorld",
+        ]
+        
+        for rel_path in search_paths:
+            game_path = prefix_path / rel_path
+            if game_path.exists() and self._is_valid_rimworld(game_path):
+                install = RimWorldInstallation(
+                    path=game_path,
+                    install_type=install_type,
+                    has_mods_folder=(game_path / "Mods").exists(),
+                    has_data_folder=(game_path / "Data").exists(),
+                    is_windows_build=True,
+                    proton_prefix=prefix_path,
+                )
+                if not any(i.path == game_path for i in self.installations):
+                    self.installations.append(install)
+                    log.info(f"Detected {install_type.value} RimWorld at: {game_path}")
+                return
+    
+    def _parse_lutris_config(self, cfg_file: Path) -> None:
+        """Parse Lutris YAML config file for game paths."""
+        try:
+            import re
+            with open(cfg_file, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # Look for RimWorld references
+            if 'rimworld' not in content.lower():
+                return
+            
+            # Extract game path from config
+            path_match = re.search(r'prefix:\s*(.+)', content)
+            if path_match:
+                prefix_path = Path(path_match.group(1).strip().strip('"\''))
+                if prefix_path.exists():
+                    self._search_prefix_for_rimworld(prefix_path, InstallationType.PROTON_STANDALONE)
+        except (OSError, IOError):
+            pass
+    
+    def _parse_heroic_config(self, json_file: Path) -> None:
+        """Parse Heroic JSON config for game install paths."""
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Heroic library format
+            if isinstance(data, list):
+                for game in data:
+                    if isinstance(game, dict):
+                        title = game.get('title', '').lower()
+                        if 'rimworld' in title:
+                            install_path = game.get('install_path') or game.get('installPath')
+                            if install_path:
+                                game_path = Path(install_path)
+                                if game_path.exists() and self._is_valid_rimworld(game_path):
+                                    self._add_heroic_install(game_path)
+        except (json.JSONDecodeError, OSError, IOError):
+            pass
     
     # ==================== LINUX ====================
     
