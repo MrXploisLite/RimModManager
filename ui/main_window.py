@@ -1493,6 +1493,7 @@ class MainWindow(QMainWindow):
         """Check for application updates from GitHub."""
         try:
             import urllib.request
+            import urllib.error
             import json
             from main import __version__
             
@@ -1507,7 +1508,7 @@ class MainWindow(QMainWindow):
                     self.status_bar.showMessage(
                         f"🆕 Update available: v{latest_version} (current: v{__version__})"
                     )
-        except Exception:
+        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError, ValueError):
             pass  # Silently fail - not critical
     
     def _detect_installations(self):

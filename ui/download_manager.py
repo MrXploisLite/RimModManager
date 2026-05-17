@@ -11,6 +11,7 @@ import tempfile
 import time
 import threading
 import concurrent.futures
+import logging
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -23,6 +24,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QTextCursor, QColor
+
+log = logging.getLogger("rimmodmanager.download_manager")
 
 
 class DownloadStatus(Enum):
@@ -315,7 +318,7 @@ class LiveDownloadWorker(QThread):
                 try:
                     wid, result_path = future.result()
                     results[wid] = result_path
-                except Exception as e:
+                except (OSError, ValueError, RuntimeError, concurrent.futures.CancelledError) as e:
                     wid = future_to_wid[future]
                     self.log_output.emit(f"[ERROR] Mod {wid}: {e}")
                     self.item_failed.emit(wid, str(e))
@@ -388,8 +391,8 @@ class LiveDownloadWorker(QThread):
                                 if total > 0:
                                     pct = min(85, 20 + int(downloaded * 65 / total))
                                     self.item_progress.emit(workshop_id, pct)
-                    except Exception:
-                        pass
+                    except (OSError, ValueError, AttributeError):
+                        continue
                 
                 process.wait(timeout=10)
                 
@@ -417,7 +420,7 @@ class LiveDownloadWorker(QThread):
             
             return None
             
-        except Exception as e:
+        except (OSError, IOError, subprocess.SubprocessError, ValueError, RuntimeError) as e:
             self.log_output.emit(f"[ERROR] Mod {workshop_id}: {e}")
             return None
         finally:
@@ -425,8 +428,8 @@ class LiveDownloadWorker(QThread):
             try:
                 if temp_path.exists():
                     shutil.rmtree(temp_path, ignore_errors=True)
-            except Exception:
-                pass
+            except (OSError, PermissionError):
+                log.debug(f"Failed cleaning temp path {temp_path}")
     
     def _download_batch(self, workshop_ids: list[str]) -> dict[str, Optional[Path]]:
         """Download multiple mods in a single SteamCMD session."""
@@ -603,8 +606,8 @@ class LiveDownloadWorker(QThread):
                         break
                     except (OSError, PermissionError):
                         time.sleep(0.5)  # Wait a bit and retry
-            except Exception:
-                pass  # Ignore cleanup errors
+            except (OSError, PermissionError) as e:
+                log.debug(f"Failed cleaning batch temp path {temp_path}: {e}")
         
         return results
 
@@ -843,7 +846,7 @@ class DownloadLogWidget(QWidget):
             
             self._log_info(f"Fetched {len(names)} mod names from Steam")
             
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             self._log_info(f"Could not fetch mod names: {e}")
         
         return names

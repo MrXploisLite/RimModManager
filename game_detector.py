@@ -220,7 +220,7 @@ class GameDetector:
                 if bitmask & 1:
                     drives.append(letter)
                 bitmask >>= 1
-        except Exception:
+        except (OSError, AttributeError, ValueError):
             drives = list('CDEFGHIJKLMNOPQRSTUVWXYZ')
 
         # Check all drives for GOG installations
@@ -284,10 +284,11 @@ class GameDetector:
                         path=gog_path,
                         install_type=InstallationType.GOG,
                         has_mods_folder=(contents_path / "Mods").exists(),
-                        has_data_folder=(contents_path / "Data").exists(),
+                        has_data_folder=contents_path.exists(),
                         is_windows_build=False,
                     )
-                    self.installations.append(install)
+                    if install not in self.installations:
+                        self.installations.append(install)
     
     # ==================== LINUX ====================
     
@@ -443,11 +444,17 @@ class GameDetector:
                     is_windows_build=is_windows,
                     proton_prefix=prefix,
                 )
-                self.installations.append(install)
+                if install not in self.installations:
+                    self.installations.append(install)
     
     def _detect_custom_paths(self) -> None:
         """Detect installations in user-defined custom paths."""
         for path_str in self.custom_paths:
+            if isinstance(path_str, str):
+                path_str = path_str.strip()
+            if not path_str:
+                continue
+
             path = Path(path_str).expanduser()
             # Normalize symlinks/relative paths to avoid duplicate entries.
             try:

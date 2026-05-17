@@ -4,6 +4,7 @@ Update checker, conflict resolver, and enhanced mod info UI.
 """
 
 from typing import Optional, Callable
+import logging
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -19,6 +20,8 @@ from mod_parser import (
     EnhancedModInfoFetcher,
     ConflictResolver, ConflictInfo, ModParser
 )
+
+log = logging.getLogger("rimmodmanager.tools")
 
 
 class UpdateCheckWorker(QThread):
@@ -486,7 +489,8 @@ class EnhancedInfoWorker(QThread):
         try:
             result = self.fetcher.fetch_info([self.workshop_id])
             self.finished.emit(result)
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
+            log.debug(f"Enhanced info fetch failed for {self.workshop_id}: {e}")
             self.error.emit(str(e))
 
 

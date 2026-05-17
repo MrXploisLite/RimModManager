@@ -88,6 +88,44 @@ class TestConfigHandler(unittest.TestCase):
         self.assertTrue(result)
         self.assertNotIn(test_path, self.config_handler.config.mod_source_paths)
 
+    def test_load_ignores_invalid_theme_value(self):
+        """Invalid theme in config file should fall back to default."""
+        config_file = self.temp_dir / "config.json"
+        config_file.write_text(json.dumps({"theme": "Neon", "window_width": 1500}), encoding='utf-8')
+
+        new_handler = ConfigHandler()
+
+        self.assertEqual(new_handler.config.theme, "System")
+        self.assertEqual(new_handler.config.window_width, 1500)
+
+    def test_load_sanitizes_active_mods_shape(self):
+        """Corrupt active_mods entries should be discarded safely."""
+        config_file = self.temp_dir / "config.json"
+        config_file.write_text(
+            json.dumps({
+                "active_mods": {
+                    "/valid/path": ["mod.one", "mod.two"],
+                    "/invalid/path": "not-a-list",
+                    "": ["mod.blankpath"],
+                }
+            }),
+            encoding='utf-8'
+        )
+
+        new_handler = ConfigHandler()
+
+        self.assertEqual(new_handler.config.active_mods.get("/valid/path"), ["mod.one", "mod.two"])
+        self.assertNotIn("/invalid/path", new_handler.config.active_mods)
+
+    def test_load_rejects_invalid_splitter_sizes(self):
+        """Invalid splitter sizes should keep defaults."""
+        config_file = self.temp_dir / "config.json"
+        config_file.write_text(json.dumps({"splitter_sizes": ["bad", -1, True]}), encoding='utf-8')
+
+        new_handler = ConfigHandler()
+
+        self.assertEqual(new_handler.config.splitter_sizes, [300, 600, 300])
+
 
 class TestModlistManagement(unittest.TestCase):
     """Tests for modlist save/load functionality."""

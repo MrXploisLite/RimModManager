@@ -91,6 +91,7 @@ class ConfigHandler:
     CONFIG_DIR_NAME = "RimModManager" if PLATFORM == 'windows' else "rimmodmanager"
     CONFIG_FILE_NAME = "config.json"
     MODLISTS_DIR_NAME = "modlists"
+    VALID_THEMES = {"System", "Dark", "Light"}
     
     def __init__(self):
         self._config_dir = self._get_config_dir()
@@ -145,6 +146,80 @@ class ConfigHandler:
     def config(self) -> AppConfig:
         """Return the current configuration."""
         return self._config
+
+    def _validate_loaded_value(self, key: str, value: Any) -> tuple[bool, Any]:
+        """Validate and sanitize value loaded from config file."""
+        string_keys = {
+            'last_installation',
+            'last_modlist_path',
+            'steamcmd_path',
+            'workshop_download_path',
+            'theme',
+        }
+        int_keys = {
+            'window_width',
+            'window_height',
+            'window_x',
+            'window_y',
+        }
+        bool_keys = {
+            'check_updates_on_startup',
+            'disable_webengine',
+        }
+
+        if key in string_keys:
+            if not isinstance(value, str):
+                return False, None
+            if key == 'theme' and value not in self.VALID_THEMES:
+                return False, None
+            return True, value
+
+        if key in int_keys:
+            if isinstance(value, bool) or not isinstance(value, int):
+                return False, None
+            return True, value
+
+        if key in bool_keys:
+            return isinstance(value, bool), value
+
+        if key in {'mod_source_paths', 'custom_game_paths'}:
+            if not isinstance(value, list):
+                return False, None
+            cleaned = [v for v in value if isinstance(v, str) and v]
+            return True, cleaned
+
+        if key == 'splitter_sizes':
+            if not isinstance(value, list):
+                return False, None
+            cleaned = [v for v in value if isinstance(v, int) and not isinstance(v, bool) and v >= 0]
+            return (len(cleaned) >= 2), cleaned
+
+        if key == 'active_mods':
+            if not isinstance(value, dict):
+                return False, None
+            cleaned: dict[str, list[str]] = {}
+            for install_path, mod_ids in value.items():
+                if not isinstance(install_path, str) or not isinstance(mod_ids, list):
+                    continue
+                cleaned_ids = [m for m in mod_ids if isinstance(m, str) and m]
+                cleaned[install_path] = cleaned_ids
+            return True, cleaned
+
+        if key == 'dark_mode':
+            if value is None or isinstance(value, bool):
+                return True, value
+            return False, None
+
+        if key == 'config_path_overrides':
+            if not isinstance(value, dict):
+                return False, None
+            cleaned = {
+                k: v for k, v in value.items()
+                if isinstance(k, str) and isinstance(v, str) and k and v
+            }
+            return True, cleaned
+
+        return True, value
     
     def load(self) -> bool:
         """
@@ -166,14 +241,11 @@ class ConfigHandler:
             # Update config with loaded values, keeping defaults for missing keys
             for key, value in data.items():
                 if hasattr(self._config, key):
-                    # Type validation for critical fields
-                    if key == 'mod_source_paths' and not isinstance(value, list):
+                    valid, sanitized = self._validate_loaded_value(key, value)
+                    if not valid:
+                        log.warning(f"Ignoring invalid config value for '{key}'")
                         continue
-                    if key == 'custom_game_paths' and not isinstance(value, list):
-                        continue
-                    if key == 'active_mods' and not isinstance(value, dict):
-                        continue
-                    setattr(self._config, key, value)
+                    setattr(self._config, key, sanitized)
             
             return True
         except (json.JSONDecodeError, IOError, PermissionError, TypeError) as e:
@@ -202,7 +274,7 @@ class ConfigHandler:
                 temp_file = Path(temp_path)
                 temp_file.replace(self._config_file)
                 return True
-            except Exception:
+            except (IOError, OSError, TypeError, ValueError):
                 # Clean up temp file on error
                 try:
                     os.unlink(temp_path)
@@ -286,6 +358,7 @@ class ConfigHandler:
         filepath = self._modlists_dir / filename
         
         # Atomic write
+        temp_path = ""
         try:
             fd, temp_path = tempfile.mkstemp(
                 suffix='.json',
@@ -296,10 +369,11 @@ class ConfigHandler:
                 json.dump(modlist_data, f, indent=2)
             
             Path(temp_path).replace(filepath)
-        except Exception:
+        except (IOError, OSError, TypeError, ValueError):
             try:
-                os.unlink(temp_path)
-            except (OSError, NameError):
+                if temp_path:
+                    os.unlink(temp_path)
+            except OSError:
                 pass
             raise
         

@@ -5,6 +5,7 @@ Integrated Steam Workshop browser with subscription and download features.
 
 import re
 import threading
+import logging
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
@@ -17,6 +18,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
 from game_detector import PLATFORM
+
+log = logging.getLogger("rimmodmanager.workshop_browser")
 
 # Try to import WebEngine, fallback gracefully if not available
 try:
@@ -445,12 +448,18 @@ class WorkshopBrowser(QWidget):
                 self._add_to_queue(workshop_id)
                 self.url_input.clear()
                 
-        except urllib.error.URLError as e:
-            self.status_label.setText(f"Network error: {e.reason}")
+        except urllib.error.HTTPError as e:
+            self.status_label.setText(f"HTTP error: {e.code}")
             # Fallback: add as single mod
             self._add_to_queue(workshop_id)
             self.url_input.clear()
-        except Exception as e:
+        except urllib.error.URLError as e:
+            reason = getattr(e, 'reason', str(e))
+            self.status_label.setText(f"Network error: {reason}")
+            # Fallback: add as single mod
+            self._add_to_queue(workshop_id)
+            self.url_input.clear()
+        except (OSError, ValueError, RuntimeError) as e:
             self.status_label.setText(f"Error checking item: {e}")
             # Fallback: add as single mod
             self._add_to_queue(workshop_id)
@@ -595,7 +604,7 @@ class WorkshopBrowser(QWidget):
             self.url_input.clear()
             self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
             
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             progress.close()
             self.status_label.setText(f"Failed to parse collection: {e}")
     
@@ -626,9 +635,9 @@ class WorkshopBrowser(QWidget):
                     collection = details[0]
                     if 'children' in collection:
                         return [str(item['publishedfileid']) for item in collection['children']]
-        except Exception:
-            # API failed, will fall back to HTML parsing
-            pass
+        except (OSError, ValueError, RuntimeError) as e:
+            # API failed, caller will fall back to HTML parsing.
+            log.debug(f"Collection API fetch failed for {collection_id}: {e}")
         
         return []
     
@@ -706,8 +715,8 @@ class WorkshopBrowser(QWidget):
                 details = result['response']['publishedfiledetails']
                 if details and details[0].get('title'):
                     return details[0]['title']
-        except Exception:
-            pass
+        except (OSError, ValueError, RuntimeError) as e:
+            log.debug(f"Failed to fetch workshop title for {workshop_id}: {e}")
         
         return None
     
@@ -792,8 +801,8 @@ class WorkshopBrowser(QWidget):
                     title = item.get('title', '')
                     if wid and title:
                         names[wid] = title
-        except Exception:
-            pass
+        except (OSError, ValueError, RuntimeError) as e:
+            log.debug(f"Batch workshop title fetch failed: {e}")
         
         return names
     
@@ -883,12 +892,12 @@ class WorkshopBrowser(QWidget):
                     matches = re.findall(pattern, html, re.IGNORECASE)
                     collection_ids.extend(matches)
                 
-                # Dedupe
-                collection_ids = list(set(collection_ids))
+                # Dedupe with deterministic order
+                collection_ids = sorted(set(collection_ids), key=int)
             
             # Exclude collection's own ID and already queued/downloaded
             unique_ids = []
-            for mid in collection_ids:
+            for mid in sorted(collection_ids, key=int):
                 if mid != collection_id and mid not in self.queue_ids:
                     if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
                         unique_ids.append(mid)
@@ -929,13 +938,14 @@ class WorkshopBrowser(QWidget):
             self.url_input.clear()  # Clear URL input after successful parse
             self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
             
-        except urllib.error.URLError as e:
-            progress.close()
-            self.status_label.setText(f"Network error: {e.reason}")
         except urllib.error.HTTPError as e:
             progress.close()
             self.status_label.setText(f"HTTP error: {e.code}")
-        except Exception as e:
+        except urllib.error.URLError as e:
+            progress.close()
+            reason = getattr(e, 'reason', str(e))
+            self.status_label.setText(f"Network error: {reason}")
+        except (OSError, ValueError, RuntimeError) as e:
             progress.close()
             self.status_label.setText(f"Failed to parse collection: {e}")
     

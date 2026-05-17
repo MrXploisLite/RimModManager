@@ -70,11 +70,36 @@ class ModInfo:
             self.about_xml_path = self.path / "About" / "About.xml"
     
     def __hash__(self):
-        return hash(self.package_id.lower() if self.package_id else str(self.path))
+        if self.package_id:
+            return hash(("pkg", self.package_id.lower()))
+
+        if self.path:
+            try:
+                return hash(("path", str(self.path.resolve())))
+            except OSError:
+                return hash(("path", str(self.path)))
+
+        return hash(id(self))
     
     def __eq__(self, other):
-        if isinstance(other, ModInfo):
+        if not isinstance(other, ModInfo):
+            return False
+
+        # Primary identity: package ID (case-insensitive) when both have it.
+        if self.package_id and other.package_id:
             return self.package_id.lower() == other.package_id.lower()
+
+        # If only one side has package ID, they are different mods.
+        if self.package_id or other.package_id:
+            return False
+
+        # Fallback identity: physical path when package IDs are missing.
+        if self.path and other.path:
+            try:
+                return self.path.resolve() == other.path.resolve()
+            except OSError:
+                return self.path == other.path
+
         return False
     
     def display_name(self) -> str:
@@ -155,6 +180,7 @@ class ModParser:
             return None
         
         about_xml = mod_path / "About" / "About.xml"
+        about_xml_lower = mod_path / "About" / "about.xml"
         
         # Create base mod info
         mod = ModInfo(path=mod_path, about_xml_path=about_xml)
@@ -166,17 +192,27 @@ class ModParser:
         # Try to parse About.xml
         if about_xml.exists():
             try:
+                mod.about_xml_path = about_xml
                 mod = self._parse_about_xml(mod, about_xml)
             except (ET.ParseError, OSError, IOError, UnicodeDecodeError) as e:
                 mod.is_valid = False
                 mod.error_message = f"Failed to parse About.xml: {e}"
                 # Try to extract at least the name from folder
                 mod.name = mod_path.name
+        elif about_xml_lower.exists():
+            try:
+                mod.about_xml_path = about_xml_lower
+                mod = self._parse_about_xml(mod, about_xml_lower)
+            except (ET.ParseError, OSError, IOError, UnicodeDecodeError) as e:
+                mod.is_valid = False
+                mod.error_message = f"Failed to parse About.xml: {e}"
+                mod.name = mod_path.name
         else:
             # Check for legacy About.xml location
             legacy_xml = mod_path / "about.xml"
             if legacy_xml.exists():
                 try:
+                    mod.about_xml_path = legacy_xml
                     mod = self._parse_about_xml(mod, legacy_xml)
                 except (ET.ParseError, OSError, IOError, UnicodeDecodeError) as e:
                     mod.is_valid = False
@@ -327,16 +363,23 @@ class ModParser:
                 return
             
             # Check for PublishedFileId.txt
-            pub_id_file = mod.path / "About" / "PublishedFileId.txt"
-            if pub_id_file.exists():
+            pub_id_candidates = [
+                mod.path / "About" / "PublishedFileId.txt",
+                mod.path / "About" / "publishedfileid.txt",
+                mod.path / "PublishedFileId.txt",
+            ]
+            for pub_id_file in pub_id_candidates:
+                if not pub_id_file.exists():
+                    continue
                 try:
                     with open(pub_id_file, 'r', encoding='utf-8') as f:
                         workshop_id = f.read().strip()
                         if workshop_id.isdigit():
                             mod.steam_workshop_id = workshop_id
                             mod.source = ModSource.WORKSHOP
+                            break
                 except (IOError, PermissionError):
-                    pass
+                    continue
     
     def _detect_category(self, mod: ModInfo) -> None:
         """Auto-detect mod category based on metadata."""
@@ -428,6 +471,8 @@ class ModParser:
         seen = {}
         
         for mod in mod_list:
+            if not mod.package_id:
+                continue
             pkg_id = mod.package_id.lower()
             if pkg_id in seen:
                 if pkg_id not in conflicts:
@@ -443,10 +488,12 @@ class ModParser:
         Check if all dependencies are satisfied.
         Returns dict of mod_id -> list of missing dependencies.
         """
-        active_ids = {m.package_id.lower() for m in active_mods}
+        active_ids = {m.package_id.lower() for m in active_mods if m.package_id}
         missing = {}
         
         for mod in active_mods:
+            if not mod.package_id:
+                continue
             mod_missing = []
             for dep in mod.mod_dependencies:
                 if dep.lower() not in active_ids:
@@ -461,11 +508,13 @@ class ModParser:
         Check for incompatible mods that are both active.
         Returns list of (mod1, mod2) tuples that are incompatible.
         """
-        active_ids = {m.package_id.lower(): m for m in active_mods}
+        active_ids = {m.package_id.lower(): m for m in active_mods if m.package_id}
         incompatible = []
         checked = set()
         
         for mod in active_mods:
+            if not mod.package_id:
+                continue
             for incompat_id in mod.incompatible_with:
                 key = tuple(sorted([mod.package_id.lower(), incompat_id.lower()]))
                 if key not in checked and incompat_id.lower() in active_ids:
@@ -484,6 +533,13 @@ class ModParser:
         
         if not mods:
             return []
+
+        # Keep mods without package IDs at end to avoid graph-key collisions.
+        mods_with_id = [m for m in mods if m.package_id]
+        anonymous_mods = [m for m in mods if not m.package_id]
+
+        if not mods_with_id:
+            return anonymous_mods
         
         # Critical mods that must be at the top in specific order
         CRITICAL_ORDER = [
@@ -498,7 +554,7 @@ class ModParser:
         ]
         
         # Build mod dict
-        mod_dict = {m.package_id.lower(): m for m in mods}
+        mod_dict = {m.package_id.lower(): m for m in mods_with_id}
         
         # Separate critical mods from others
         critical_mods = []
@@ -508,14 +564,14 @@ class ModParser:
             if critical_id in mod_dict:
                 critical_mods.append(mod_dict[critical_id])
         
-        for mod in mods:
+        for mod in mods_with_id:
             mod_id = mod.package_id.lower()
             if mod_id not in CRITICAL_ORDER:
                 other_mods.append(mod)
         
         # Sort other mods using topological sort
         if not other_mods:
-            return critical_mods
+            return critical_mods + anonymous_mods
         
         # Build dependency graph for non-critical mods
         other_dict = {m.package_id.lower(): m for m in other_mods}
@@ -562,8 +618,8 @@ class ModParser:
             remaining = [m for m in other_mods if m not in sorted_others]
             sorted_others.extend(remaining)
         
-        # Combine: critical mods first, then sorted others
-        return critical_mods + sorted_others
+        # Combine: critical mods first, then sorted others, then anonymous mods.
+        return critical_mods + sorted_others + anonymous_mods
     
     def clear_cache(self) -> None:
         """Clear the mod cache."""
@@ -848,8 +904,8 @@ class ModsConfigParser:
                 ver = tree.find(".//version")
                 if ver is not None and ver.text:
                     existing_version = ver.text.strip()
-            except Exception:
-                pass
+            except (ET.ParseError, OSError, IOError, ValueError) as e:
+                log.debug(f"Failed reading existing ModsConfig version: {e}")
         
         final_version = game_version or existing_version or "1.6.4633 rev1261"
         
@@ -905,8 +961,8 @@ class ModsConfigParser:
         if mods_config.exists():
             try:
                 shutil.copy2(mods_config, backup_path)
-            except Exception:
-                pass
+            except (OSError, PermissionError, shutil.Error) as e:
+                log.warning(f"Failed to create ModsConfig backup: {e}")
         
         # Build dict structure (RimSort style)
         data = {
@@ -1169,7 +1225,6 @@ class ModUpdateChecker:
             )
             
             with urllib.request.urlopen(request, timeout=30) as response:
-                import json
                 response_data = json.loads(response.read().decode('utf-8'))
             
             # Parse response
@@ -1190,10 +1245,10 @@ class ModUpdateChecker:
                             'preview_url': item.get('preview_url', ''),
                             'creator': item.get('creator', ''),
                         }
-        except urllib.error.URLError as e:
-            log.debug(f"Network error fetching Workshop info: {e}")
         except urllib.error.HTTPError as e:
             log.debug(f"HTTP error fetching Workshop info: {e.code}")
+        except urllib.error.URLError as e:
+            log.debug(f"Network error fetching Workshop info: {e}")
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             log.debug(f"Failed to parse Workshop response: {e}")
         except OSError as e:
@@ -1329,7 +1384,6 @@ class EnhancedModInfoFetcher:
                 )
                 
                 with urllib.request.urlopen(request, timeout=30) as response:
-                    import json
                     response_data = json.loads(response.read().decode('utf-8'))
                 
                 if 'response' in response_data and 'publishedfiledetails' in response_data['response']:
@@ -1358,10 +1412,10 @@ class EnhancedModInfoFetcher:
                                 preview_url=item.get('preview_url', ''),
                             )
                             self.cache[wid] = info
-            except urllib.error.URLError as e:
-                log.debug(f"Network error fetching enhanced mod info: {e}")
             except urllib.error.HTTPError as e:
                 log.debug(f"HTTP error fetching enhanced mod info: {e.code}")
+            except urllib.error.URLError as e:
+                log.debug(f"Network error fetching enhanced mod info: {e}")
             except (json.JSONDecodeError, KeyError, TypeError) as e:
                 log.debug(f"Failed to parse enhanced mod info response: {e}")
             except OSError as e:
@@ -1425,6 +1479,8 @@ class ConflictResolver:
         seen = {}
         
         for mod in mods:
+            if not mod.package_id:
+                continue
             pkg_id = mod.package_id.lower()
             if pkg_id in seen:
                 conflicts.append(ConflictInfo(
@@ -1445,9 +1501,11 @@ class ConflictResolver:
     def _check_missing_deps(self, mods: list['ModInfo']) -> list[ConflictInfo]:
         """Check for missing dependencies."""
         conflicts = []
-        active_ids = {m.package_id.lower() for m in mods}
+        active_ids = {m.package_id.lower() for m in mods if m.package_id}
         
         for mod in mods:
+            if not mod.package_id:
+                continue
             for dep in mod.mod_dependencies:
                 if dep.lower() not in active_ids:
                     # Check if it's a core/DLC dependency
@@ -1469,10 +1527,12 @@ class ConflictResolver:
     def _check_incompatibilities(self, mods: list['ModInfo']) -> list[ConflictInfo]:
         """Check for incompatible mods."""
         conflicts = []
-        active_ids = {m.package_id.lower(): m for m in mods}
+        active_ids = {m.package_id.lower(): m for m in mods if m.package_id}
         checked = set()
         
         for mod in mods:
+            if not mod.package_id:
+                continue
             for incompat_id in mod.incompatible_with:
                 key = tuple(sorted([mod.package_id.lower(), incompat_id.lower()]))
                 if key not in checked and incompat_id.lower() in active_ids:
@@ -1494,9 +1554,11 @@ class ConflictResolver:
     def _check_load_order(self, mods: list['ModInfo']) -> list[ConflictInfo]:
         """Check for load order issues."""
         conflicts = []
-        mod_positions = {m.package_id.lower(): i for i, m in enumerate(mods)}
+        mod_positions = {m.package_id.lower(): i for i, m in enumerate(mods) if m.package_id}
         
         for mod in mods:
+            if not mod.package_id:
+                continue
             mod_pos = mod_positions[mod.package_id.lower()]
             
             # Check loadAfter - these mods should come before this one

@@ -141,6 +141,16 @@ class TestGameDetector(unittest.TestCase):
 
         self.assertEqual(len(detector.installations), 1)
 
+    def test_custom_paths_skip_empty_strings(self):
+        """Empty/whitespace custom paths should be ignored safely."""
+        custom_path = self._create_mock_rimworld(self.temp_dir / "RimWorld")
+
+        detector = GameDetector(custom_paths=["", "   ", str(custom_path)])
+        detector._detect_custom_paths()
+
+        self.assertEqual(len(detector.installations), 1)
+        self.assertEqual(detector.installations[0].path, custom_path)
+
 
 class TestRimWorldInstallation(unittest.TestCase):
     """Tests for RimWorldInstallation dataclass."""

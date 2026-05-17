@@ -95,6 +95,58 @@ class TestModParser(unittest.TestCase):
         mods = self.parser.scan_directory(fake_path, ModSource.LOCAL)
         self.assertEqual(len(mods), 0)
 
+    def test_parse_lowercase_about_xml(self):
+        """Test parsing mods that use About/about.xml."""
+        mod_dir = self.temp_dir / "LowercaseAbout"
+        about_dir = mod_dir / "About"
+        about_dir.mkdir(parents=True)
+        (about_dir / "about.xml").write_text(
+            """<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<ModMetaData>
+    <name>Lowercase About</name>
+    <packageId>lowercase.about.mod</packageId>
+    <author>Tester</author>
+</ModMetaData>""",
+            encoding='utf-8'
+        )
+
+        mods = self.parser.scan_directory(self.temp_dir, ModSource.LOCAL)
+
+        self.assertEqual(len(mods), 1)
+        self.assertEqual(mods[0].package_id, "lowercase.about.mod")
+        self.assertTrue(mods[0].is_valid)
+
+    def test_detect_workshop_id_from_lowercase_publishedfile(self):
+        """Test workshop ID detection from lowercase publishedfileid.txt."""
+        mod_dir = self._create_mock_mod("WorkshopMod", "workshop.mod")
+        (mod_dir / "About" / "publishedfileid.txt").write_text("123456789", encoding='utf-8')
+
+        mods = self.parser.scan_directory(self.temp_dir, ModSource.LOCAL)
+
+        self.assertEqual(len(mods), 1)
+        self.assertEqual(mods[0].steam_workshop_id, "123456789")
+        self.assertEqual(mods[0].source, ModSource.WORKSHOP)
+
+
+class TestModInfoIdentity(unittest.TestCase):
+    """Tests for ModInfo equality/hash behavior."""
+
+    def test_modinfo_empty_package_ids_not_equal_by_default(self):
+        """Mods without package IDs should not collapse into one identity."""
+        mod1 = ModInfo(path=Path("/tmp/rmm-test-mod-1"), package_id="")
+        mod2 = ModInfo(path=Path("/tmp/rmm-test-mod-2"), package_id="")
+
+        self.assertNotEqual(mod1, mod2)
+
+    def test_modinfo_without_package_id_uses_path_identity(self):
+        """Mods without package IDs use path-based identity."""
+        shared_path = Path("/tmp/rmm-test-mod-shared")
+        mod1 = ModInfo(path=shared_path, package_id="")
+        mod2 = ModInfo(path=shared_path, package_id="")
+
+        self.assertEqual(mod1, mod2)
+        self.assertEqual(hash(mod1), hash(mod2))
+
 
 class TestLoadOrderSorting(unittest.TestCase):
     """Tests for load order sorting functionality."""
@@ -164,6 +216,20 @@ class TestLoadOrderSorting(unittest.TestCase):
         base_idx = next(i for i, m in enumerate(sorted_mods) if m.package_id == "base.mod")
         dep_idx = next(i for i, m in enumerate(sorted_mods) if m.package_id == "dependent.mod")
         self.assertLess(base_idx, dep_idx)
+
+    def test_sort_handles_empty_package_ids(self):
+        """Sorting should not crash when some mods have empty package IDs."""
+        mods = [
+            self._create_mod_info("No ID", ""),
+            self._create_mod_info("Harmony", "brrainz.harmony"),
+            self._create_mod_info("Core", "ludeon.rimworld"),
+        ]
+
+        sorted_mods = self.parser.sort_by_load_order(mods)
+
+        self.assertEqual(sorted_mods[0].package_id, "brrainz.harmony")
+        self.assertEqual(sorted_mods[1].package_id, "ludeon.rimworld")
+        self.assertEqual(sorted_mods[-1].name, "No ID")
 
 
 class TestModsConfigParser(unittest.TestCase):

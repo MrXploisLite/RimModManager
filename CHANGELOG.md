@@ -5,6 +5,24 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-17
+
+### Fixed
+- **Mod Identity Bug**: `ModInfo` equality/hash now handle empty `package_id` correctly and avoid false duplicates.
+- **Lowercase About.xml Support**: Mods using `About/about.xml` now parse correctly instead of being marked invalid.
+- **Workshop ID Detection**: Added fallback for lowercase `publishedfileid.txt` and root-level `PublishedFileId.txt`.
+- **Load Order Robustness**: Sorting and conflict checks now safely handle mods without package IDs.
+- **macOS GOG Detection**: Fixed `has_data_folder` detection and deduplicated installation entries.
+
+### Changed
+- **Config Hardening**: Added strict config value validation and sanitization (theme, splitter sizes, active mods, booleans, paths).
+- **Importer Quality**: Added deterministic deduplication for package/workshop IDs and improved text-format detection with comment filtering.
+- **Workshop/Download Reliability**: Improved logging and narrowed exception handling in downloader and workshop browser paths.
+- **UI Networking Resilience**: Better HTTP/URL error handling for Workshop and update-check flows.
+
+### Tests
+- Added regression tests for lowercase About.xml parsing, publishedfileid fallback, `ModInfo` identity behavior, empty custom path handling, and importer dedup/detection edge cases.
+
 ## [0.2.0] - 2025-12-27
 
 ### Added
@@ -68,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Status |
 |---------|------|--------|
-| 0.2.0 | 2025-12-27 | Current |
+| 0.2.2 | 2026-05-17 | Current |
+| 0.2.0 | 2025-12-27 | Stable |
 | 0.1.0 | 2025-12-27 | Stable |
 | 0.0.7 | 2025-12-25 | Pre-release |

@@ -41,6 +41,21 @@ class ModImporter:
     
     def __init__(self):
         pass
+
+    @staticmethod
+    def _dedupe(items: list[str], case_insensitive: bool = False) -> list[str]:
+        """Deduplicate a list while preserving order."""
+        seen = set()
+        result = []
+
+        for item in items:
+            key = item.lower() if case_insensitive else item
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+
+        return result
     
     def detect_format(self, file_path: Path) -> ImportFormat:
         """Auto-detect the format of a modlist file."""
@@ -98,7 +113,10 @@ class ModImporter:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read().strip()
                 
-                lines = [line.strip() for line in content.split('\n') if line.strip()]
+                lines = [
+                    line.strip() for line in content.split('\n')
+                    if line.strip() and not line.strip().startswith('#') and not line.strip().startswith('//')
+                ]
                 if lines:
                     # All numeric = workshop IDs
                     if all(line.isdigit() for line in lines[:10]):
@@ -223,6 +241,9 @@ class ModImporter:
             if not package_ids and not workshop_ids:
                 errors.append("No valid mods found in file")
                 return ImportResult(False, ImportFormat.RIMSORT_JSON, [], [], {}, errors, warnings)
+
+            package_ids = self._dedupe(package_ids, case_insensitive=True)
+            workshop_ids = self._dedupe(workshop_ids)
             
             log.info(f"Imported {len(package_ids)} package IDs, {len(workshop_ids)} workshop IDs from RimSort")
             
@@ -305,6 +326,9 @@ class ModImporter:
             if not package_ids and not workshop_ids:
                 errors.append("No valid mods found in XML file")
                 return ImportResult(False, ImportFormat.RIMPY_XML, [], [], {}, errors, warnings)
+
+            package_ids = self._dedupe(package_ids, case_insensitive=True)
+            workshop_ids = self._dedupe(workshop_ids)
             
             log.info(f"Imported {len(package_ids)} package IDs from RimPy XML")
             
@@ -343,6 +367,8 @@ class ModImporter:
             
             if not package_ids:
                 warnings.append("No active mods found in ModsConfig.xml")
+
+            package_ids = self._dedupe(package_ids, case_insensitive=True)
             
             log.info(f"Imported {len(package_ids)} package IDs from ModsConfig.xml")
             
@@ -395,6 +421,9 @@ class ModImporter:
             if not package_ids and not workshop_ids:
                 errors.append("No valid package IDs or workshop IDs found")
                 return ImportResult(False, ImportFormat.PLAIN_TEXT, [], [], {}, errors, warnings)
+
+            package_ids = self._dedupe(package_ids, case_insensitive=True)
+            workshop_ids = self._dedupe(workshop_ids)
             
             log.info(f"Imported {len(package_ids)} package IDs, {len(workshop_ids)} workshop IDs from text")
             
@@ -444,6 +473,8 @@ class ModImporter:
             if not workshop_ids:
                 errors.append("No valid workshop IDs found")
                 return ImportResult(False, ImportFormat.WORKSHOP_IDS, [], [], {}, errors, warnings)
+
+            workshop_ids = self._dedupe(workshop_ids)
             
             log.info(f"Imported {len(workshop_ids)} workshop IDs")
             
@@ -506,6 +537,9 @@ class ModImporter:
             if not package_ids and not workshop_ids:
                 errors.append("No valid mods found in JSON")
                 return ImportResult(False, ImportFormat.RMM_JSON, [], [], {}, errors, warnings)
+
+            package_ids = self._dedupe(package_ids, case_insensitive=True)
+            workshop_ids = self._dedupe(workshop_ids)
             
             log.info(f"Imported {len(package_ids)} package IDs from RMM JSON")
             
@@ -559,6 +593,9 @@ class ModImporter:
             warnings.append(f"Skipped: {line[:40]}")
         
         success = bool(package_ids or workshop_ids)
+
+        package_ids = self._dedupe(package_ids, case_insensitive=True)
+        workshop_ids = self._dedupe(workshop_ids)
         
         return ImportResult(
             success=success,

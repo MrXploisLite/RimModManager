@@ -147,13 +147,16 @@ class CompatibilityDatabase:
             log.info(f"Downloaded {self.rule_count} rules")
             return True
             
-        except urllib.error.URLError as e:
-            log.error(f"Network error downloading rules: {e}")
-            return False
         except json.JSONDecodeError as e:
             log.error(f"Invalid JSON in rules database: {e}")
             return False
-        except Exception as e:
+        except urllib.error.HTTPError as e:
+            log.error(f"HTTP error downloading rules: {e.code}")
+            return False
+        except urllib.error.URLError as e:
+            log.error(f"Network error downloading rules: {e}")
+            return False
+        except (OSError, ValueError, TypeError) as e:
             log.error(f"Unexpected error downloading rules: {e}")
             return False
     

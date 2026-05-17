@@ -80,7 +80,7 @@ class PresetEncoder:
             log.info(f"Encoded preset with {len(package_ids)} mods, code length: {len(code)}")
             return code
             
-        except Exception as e:
+        except (TypeError, ValueError, UnicodeEncodeError, zlib.error) as e:
             log.error(f"Failed to encode preset: {e}")
             raise ValueError(f"Failed to encode preset: {e}")
     
@@ -149,7 +149,7 @@ class PresetEncoder:
         except json.JSONDecodeError as e:
             log.error(f"Failed to parse preset JSON: {e}")
             return None
-        except Exception as e:
+        except (UnicodeDecodeError, TypeError, ValueError) as e:
             log.error(f"Unexpected error decoding preset: {e}")
             return None
     

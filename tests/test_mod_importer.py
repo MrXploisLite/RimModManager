@@ -57,6 +57,14 @@ class TestModImporter(unittest.TestCase):
         
         fmt = self.importer.detect_format(txt_file)
         self.assertEqual(fmt, ImportFormat.WORKSHOP_IDS)
+
+    def test_detect_format_workshop_ids_with_comments(self):
+        """Workshop ID detection should ignore comment lines."""
+        txt_file = self.temp_dir / "workshop_with_comments.txt"
+        txt_file.write_text("# list\n123456789\n// another comment\n987654321")
+
+        fmt = self.importer.detect_format(txt_file)
+        self.assertEqual(fmt, ImportFormat.WORKSHOP_IDS)
     
     def test_detect_format_nonexistent(self):
         """Test format detection for non-existent file."""
@@ -125,6 +133,17 @@ class TestModImporter(unittest.TestCase):
         
         self.assertTrue(result.success)
         self.assertEqual(len(result.package_ids), 3)
+
+    def test_import_plain_text_deduplicates(self):
+        """Plain text import should dedupe package/workshop IDs."""
+        txt_file = self.temp_dir / "dupes.txt"
+        txt_file.write_text("mod.one\nMOD.ONE\n123456789\n123456789")
+
+        result = self.importer.import_file(txt_file)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.package_ids, ["mod.one"])
+        self.assertEqual(result.workshop_ids, ["123456789"])
     
     def test_import_workshop_ids(self):
         """Test importing workshop IDs."""

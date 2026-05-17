@@ -7,7 +7,7 @@ Author: RimWorld Linux Community
 License: MIT
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 import sys
 import os
@@ -42,7 +42,7 @@ def check_dependencies() -> bool:
             try:
                 import ctypes
                 ctypes.windll.user32.MessageBoxW(0, msg, "RimModManager Error", 0x10)
-            except Exception:
+            except (OSError, AttributeError, ValueError):
                 pass
                 
         return False

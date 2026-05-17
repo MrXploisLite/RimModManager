@@ -271,6 +271,13 @@ After installation, restart this application.
                     self.current_task.error_message = str(e)
                     if self.on_error:
                         self.on_error(self.current_task, str(e))
+            except Exception as e:
+                if self.current_task:
+                    self.current_task.status = DownloadStatus.FAILED
+                    self.current_task.error_message = f"Unexpected error: {e}"
+                    if self.on_error:
+                        self.on_error(self.current_task, self.current_task.error_message)
+                log.exception("Unexpected error in download worker")
         
         self.is_downloading = False
         self.current_task = None
@@ -525,16 +532,16 @@ class ModInstaller:
             if source_path.resolve().parent == self.game_mods_path.resolve():
                 log.debug(f"Mod already in game folder, skipping: {source_path.name}")
                 return True  # Already there, consider it success
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as e:
+            log.debug(f"Path comparison failed (source parent check): {e}")
         
         # Skip if source and destination are the same
         try:
             if source_path.resolve() == dest_path.resolve():
                 log.debug(f"Source and destination are same, skipping: {source_path.name}")
                 return True
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as e:
+            log.debug(f"Path comparison failed (same path check): {e}")
         
         # Remove existing
         if dest_path.exists() or dest_path.is_symlink():
@@ -572,15 +579,20 @@ class ModInstaller:
             # On Windows, fall back to directory junction
             if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
                 try:
-                    import subprocess
                     result = subprocess.run(
                         ['cmd', '/c', 'mklink', '/J', str(link_path), str(source_path)],
                         capture_output=True, text=True
                     )
                     if result.returncode == 0:
                         return True
-                except Exception:
-                    pass
+                    log.debug(
+                        "Windows junction fallback failed: returncode=%s stdout=%s stderr=%s",
+                        result.returncode,
+                        result.stdout.strip(),
+                        result.stderr.strip(),
+                    )
+                except (OSError, subprocess.SubprocessError, ValueError) as sub_e:
+                    log.debug(f"Windows junction fallback exception: {sub_e}")
             
             log.error(f"Failed to create symlink: {e}")
             return False
@@ -639,8 +651,8 @@ class ModInstaller:
             if item.is_symlink():
                 try:
                     targets[item.name] = item.resolve()
-                except OSError:
-                    pass
+                except OSError as e:
+                    log.debug(f"Failed to resolve symlink target for {item}: {e}")
         
         return targets
 
