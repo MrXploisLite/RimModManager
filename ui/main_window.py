@@ -985,10 +985,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         
         # Restore window geometry
-        if self.config.config.window_width > 0:
+        if self.config.config.window_maximized:
+            self.showMaximized()
+        elif self.config.config.window_width > 0:
             self.resize(self.config.config.window_width, self.config.config.window_height)
-        if self.config.config.window_x >= 0:
-            self.move(self.config.config.window_x, self.config.config.window_y)
+            if self.config.config.window_x >= 0:
+                self.move(self.config.config.window_x, self.config.config.window_y)
         
         # Central widget
         central = QWidget()
@@ -1297,6 +1299,21 @@ class MainWindow(QMainWindow):
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self._show_settings)
         edit_menu.addAction(settings_action)
+        
+        # View menu
+        view_menu = menubar.addMenu("View")
+        
+        self._fullscreen_action = QAction("Full Screen", self)
+        self._fullscreen_action.setShortcut("F11")
+        self._fullscreen_action.setCheckable(True)
+        self._fullscreen_action.triggered.connect(self._toggle_fullscreen)
+        view_menu.addAction(self._fullscreen_action)
+        
+        view_menu.addSeparator()
+        
+        reset_view_action = QAction("Reset Window Size", self)
+        reset_view_action.triggered.connect(self._reset_window_size)
+        view_menu.addAction(reset_view_action)
         
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
@@ -3513,10 +3530,12 @@ class MainWindow(QMainWindow):
                 self.download_manager._cancel_downloads()
         
         # Save window geometry
-        self.config.config.window_width = self.width()
-        self.config.config.window_height = self.height()
-        self.config.config.window_x = self.x()
-        self.config.config.window_y = self.y()
+        self.config.config.window_maximized = self.isMaximized()
+        if not self.isMaximized():
+            self.config.config.window_width = self.width()
+            self.config.config.window_height = self.height()
+            self.config.config.window_x = self.x()
+            self.config.config.window_y = self.y()
         self.config.config.splitter_sizes = self.main_splitter.sizes()
         self.config.save()
         
@@ -3525,4 +3544,28 @@ class MainWindow(QMainWindow):
         # We do NOT modify ModsConfig.xml on close - that would break the game.
         
         event.accept()
-        event.accept()
+    
+    def _toggle_fullscreen(self):
+        """Toggle fullscreen mode."""
+        if self.isFullScreen():
+            self.showNormal()
+            self._fullscreen_action.setChecked(False)
+            self.status_bar.showMessage("Exited full screen (F11)")
+        else:
+            self.showFullScreen()
+            self._fullscreen_action.setChecked(True)
+            self.status_bar.showMessage("Full screen mode (press F11 to exit)")
+    
+    def _reset_window_size(self):
+        """Reset window to default size."""
+        self.showNormal()
+        self.resize(1200, 800)
+        self.move(100, 100)
+        self._fullscreen_action.setChecked(False)
+        self.config.config.window_maximized = False
+        self.config.config.window_width = 1200
+        self.config.config.window_height = 800
+        self.config.config.window_x = 100
+        self.config.config.window_y = 100
+        self.config.save()
+        self.status_bar.showMessage("Window size reset to default")

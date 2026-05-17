@@ -5,6 +5,18 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-05-17
+
+### Fixed
+- **Game Detection - Linux Standalone**: Added `_detect_linux_standalone()` to find GOG/manual installations in `~/RimWorld/` and other common locations. Handles nested folder structures like `rimworld_linux/data/noarch/game/`.
+- **Duplicate event.accept()**: Removed duplicate `event.accept()` call in `closeEvent()`.
+
+### Added
+- **Full Screen Mode (F11)**: Toggle fullscreen via View → Full Screen or press F11.
+- **Reset Window Size**: View → Reset Window Size to restore default window dimensions.
+- **Window Maximized State**: Saves and restores maximized window state across sessions.
+- **Deep Binary Search**: Game detector now recursively searches for `RimWorldLinux` binary in standalone folders.
+
 ## [0.2.4] - 2026-05-17
 
 ### Added

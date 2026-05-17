@@ -133,6 +133,7 @@ class GameDetector:
             self._detect_steam_native()
             self._detect_steam_proton()
             self._detect_flatpak_steam()
+            self._detect_linux_standalone()
         
         # Check custom paths (all platforms)
         self._detect_custom_paths()
@@ -287,8 +288,98 @@ class GameDetector:
                         has_data_folder=contents_path.exists(),
                         is_windows_build=False,
                     )
-                    if install not in self.installations:
-                        self.installations.append(install)
+                if install not in self.installations:
+                    self.installations.append(install)
+    
+    def _detect_linux_standalone(self) -> None:
+        """
+        Detect standalone Linux installations (GOG, itch.io, manual extract).
+        Handles nested folder structures like:
+          ~/RimWorld/rimworld_linux/data/noarch/game/
+        """
+        # Common standalone locations
+        standalone_roots = [
+            Path.home() / "RimWorld",
+            Path.home() / "Games/RimWorld",
+            Path.home() / ".local/share/RimWorld",
+        ]
+        
+        # Also check /mnt, /media, /run/media for external drives
+        for base in [Path("/mnt"), Path("/media"), Path("/run/media")]:
+            if base.exists():
+                try:
+                    for subdir in base.iterdir():
+                        if subdir.is_dir():
+                            standalone_roots.append(subdir / "RimWorld")
+                except PermissionError:
+                    pass
+        
+        for root in standalone_roots:
+            if not root.exists():
+                continue
+            
+            # Check if root itself contains game files
+            if self._is_valid_rimworld(root):
+                self._add_standalone_install(root)
+                continue
+            
+            # Search common nested patterns for GOG/itch.io installers
+            nested_patterns = [
+                root / "data" / "noarch" / "game",
+                root / "game",
+                root / "RimWorld",
+            ]
+            
+            # Also search deeper: rimworld_linux/data/noarch/game
+            try:
+                for item in root.iterdir():
+                    if item.is_dir():
+                        # Check direct child
+                        if self._is_valid_rimworld(item):
+                            self._add_standalone_install(item)
+                            continue
+                        
+                        # Check common sub-patterns
+                        for pattern in nested_patterns:
+                            # Only check patterns under this item if it matches the start
+                            if str(pattern).startswith(str(item)):
+                                if pattern.exists() and self._is_valid_rimworld(pattern):
+                                    self._add_standalone_install(pattern)
+                                    break
+            except PermissionError:
+                pass
+            
+            # Direct nested pattern checks from root
+            for pattern in nested_patterns:
+                if pattern.exists() and self._is_valid_rimworld(pattern):
+                    self._add_standalone_install(pattern)
+                    break
+            
+            # Deep search: look for RimWorldLinux binary anywhere under root
+            try:
+                for item in root.rglob("RimWorldLinux"):
+                    if item.is_file():
+                        game_dir = item.parent
+                        if self._is_valid_rimworld(game_dir):
+                            self._add_standalone_install(game_dir)
+                            break
+            except (PermissionError, OSError):
+                pass
+    
+    def _add_standalone_install(self, game_path: Path) -> None:
+        """Add a standalone installation to the list."""
+        if any(i.path == game_path for i in self.installations):
+            return
+        
+        install = RimWorldInstallation(
+            path=game_path,
+            install_type=InstallationType.STANDALONE,
+            has_mods_folder=(game_path / "Mods").exists(),
+            has_data_folder=(game_path / "Data").exists(),
+            is_windows_build=False,
+        )
+        self.installations.append(install)
+        log.info(f"Detected standalone RimWorld at: {game_path}")
     
     # ==================== LINUX ====================
     

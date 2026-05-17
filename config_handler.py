@@ -52,6 +52,7 @@ class AppConfig:
     window_height: int = 800
     window_x: int = -1
     window_y: int = -1
+    window_maximized: bool = False
     
     # SteamCMD path (if not in PATH)
     steamcmd_path: str = ""
@@ -165,6 +166,7 @@ class ConfigHandler:
         bool_keys = {
             'check_updates_on_startup',
             'disable_webengine',
+            'window_maximized',
         }
 
         if key in string_keys:
