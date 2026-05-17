@@ -192,7 +192,7 @@ class HoverButtonDelegate(QStyledItemDelegate):
     """Delegate that draws hover buttons on list items."""
     
     # Button size constants
-    BTN_SIZE = 24
+    BTN_SIZE = 28
     BTN_MARGIN = 4
     
     def __init__(self, parent=None, is_active_list: bool = False):
@@ -209,40 +209,40 @@ class HoverButtonDelegate(QStyledItemDelegate):
         if option.rect.width() <= 0 or option.rect.height() <= 0:
             return
         
-        # Draw button on hover
+        # Button area on the right (with margin from edge)
+        btn_rect = QRect(
+            option.rect.right() - self.BTN_SIZE - self.BTN_MARGIN - 4,
+            option.rect.top() + (option.rect.height() - self.BTN_SIZE) // 2,
+            self.BTN_SIZE,
+            self.BTN_SIZE
+        )
+        
+        painter.save()
+        
         if option.state & QStyle.StateFlag.State_MouseOver:
-            painter.save()
-            
-            # Button area on the right (with margin from edge)
-            btn_rect = QRect(
-                option.rect.right() - self.BTN_SIZE - self.BTN_MARGIN - 4,  # Extra padding from edge
-                option.rect.top() + (option.rect.height() - self.BTN_SIZE) // 2,
-                self.BTN_SIZE,
-                self.BTN_SIZE
-            )
-            
-            # Draw button background
-            if self.is_active_list:
-                # Red minus button for active list
-                painter.setBrush(QBrush(QColor(180, 60, 60)))
-                btn_text = "−"
-            else:
-                # Green plus button for available list
-                painter.setBrush(QBrush(QColor(60, 140, 60)))
-                btn_text = "+"
-            
-            painter.setPen(QPen(QColor(255, 255, 255, 100)))
-            painter.drawRoundedRect(btn_rect, 4, 4)
-            
-            # Draw button text
-            painter.setPen(QPen(QColor(255, 255, 255)))
-            font = QFont()
-            font.setBold(True)
-            font.setPointSize(14)
-            painter.setFont(font)
-            painter.drawText(btn_rect, Qt.AlignmentFlag.AlignCenter, btn_text)
-            
-            painter.restore()
+            # Fully visible on hover
+            bg_color = QColor(220, 53, 69) if self.is_active_list else QColor(40, 167, 69)
+            border_color = QColor(255, 255, 255, 200)
+        else:
+            # Semi-transparent when not hovered (always visible but subtle)
+            bg_color = QColor(180, 53, 69, 140) if self.is_active_list else QColor(40, 167, 69, 140)
+            border_color = QColor(255, 255, 255, 80)
+        
+        # Draw button background
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(QPen(border_color, 1))
+        painter.drawRoundedRect(btn_rect, 5, 5)
+        
+        # Draw button text
+        btn_text = "−" if self.is_active_list else "+"
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        font = QFont()
+        font.setBold(True)
+        font.setPointSize(15)
+        painter.setFont(font)
+        painter.drawText(btn_rect, Qt.AlignmentFlag.AlignCenter, btn_text)
+        
+        painter.restore()
     
     def editorEvent(self, event, model, option, index):
         """Handle mouse events on the button."""

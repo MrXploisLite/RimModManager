@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import logging
 from pathlib import Path
 from dataclasses import dataclass
@@ -378,7 +379,6 @@ After installation, restart this application.
                         last_error = f"SteamCMD returned error (code {process.returncode})"
                         log.warning(f"Attempt {attempt} failed: {last_error}")
                         if attempt < self.MAX_RETRIES:
-                            import time
                             time.sleep(2)  # Wait before retry
                         continue
                     
@@ -389,7 +389,6 @@ After installation, restart this application.
                         last_error = "Download completed but mod folder not found"
                         log.warning(f"Attempt {attempt} failed: {last_error}")
                         if attempt < self.MAX_RETRIES:
-                            import time
                             time.sleep(2)
                         continue
                     
@@ -423,14 +422,12 @@ After installation, restart this application.
                     last_error = "Download timed out"
                     log.warning(f"Attempt {attempt} timed out")
                     if attempt < self.MAX_RETRIES:
-                        import time
                         time.sleep(2)
                     continue
                 except (OSError, IOError, subprocess.SubprocessError) as e:
                     last_error = str(e)
                     log.warning(f"Attempt {attempt} failed: {e}")
                     if attempt < self.MAX_RETRIES:
-                        import time
                         time.sleep(2)
                     continue
             

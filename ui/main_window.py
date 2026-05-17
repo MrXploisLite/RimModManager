@@ -3587,7 +3587,7 @@ class MainWindow(QMainWindow):
         
         event.accept()
     
-    def _toggle_fullscreen(self):
+    def _toggle_fullscreen(self, checked: bool = None):
         """Toggle fullscreen mode."""
         if self.isFullScreen():
             self.showNormal()
