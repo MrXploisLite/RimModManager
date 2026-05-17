@@ -197,7 +197,7 @@ class SetupWizard(QDialog):
         layout.addWidget(self.header_label)
         
         self.step_label = QLabel("Setting up...")
-        self.step_label.setStyleSheet("color: #888; font-size: 14px;")
+        self.step_label.setStyleSheet("color: #666; font-size: 14px;")
         self.step_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.step_label)
         
@@ -236,7 +236,7 @@ class SetupWizard(QDialog):
         button_layout.addWidget(self.btn_next)
         
         self.btn_skip = QPushButton("Skip Setup")
-        self.btn_skip.setStyleSheet("color: #888;")
+        self.btn_skip.setStyleSheet("color: #666;")
         self.btn_skip.clicked.connect(self._skip_setup)
         button_layout.addWidget(self.btn_skip)
         
@@ -267,7 +267,7 @@ class SetupWizard(QDialog):
         info = QLabel(
             "<p><b>Step 1: Finding RimWorld</b></p>"
             "<p>We'll scan your system for RimWorld installations.</p>"
-            "<p style='color: #888;'>Checking: Steam, GOG, Lutris, Bottles, Heroic, and custom paths...</p>"
+            "<p style='color: #666;'>Checking: Steam, GOG, Lutris, Bottles, Heroic, and custom paths...</p>"
         )
         info.setWordWrap(True)
         self.content_layout.addWidget(info)
@@ -343,7 +343,7 @@ class SetupWizard(QDialog):
         warning = QLabel(
             "<h3>⚠️ No RimWorld installation found</h3>"
             "<p>Don't worry! You can add it manually later.</p>"
-            "<p style='color: #888;'>Click Next to continue setup.</p>"
+            "<p style='color: #666;'>Click Next to continue setup.</p>"
         )
         warning.setWordWrap(True)
         self.content_layout.addWidget(warning)
@@ -426,8 +426,11 @@ class SetupWizard(QDialog):
         
         # Manual instructions
         manual = QLabel(
-            "<p style='color: #888;'><b>Or install manually:</b></p>"
-            "<pre style='background: #f5f5f5; padding: 8px;'>Ubuntu/Debian: sudo apt install steamcmd\nArch: yay -S steamcmd\nFedora: sudo dnf install steamcmd</pre>"
+            "<p><b>Or install manually:</b></p>"
+            "<pre style='background: #2d2d2d; color: #e0e0e0; padding: 10px; border-radius: 4px; font-family: monospace;'>"
+            "Ubuntu/Debian: sudo apt install steamcmd\n"
+            "Arch:          yay -S steamcmd\n"
+            "Fedora:        sudo dnf install steamcmd</pre>"
         )
         manual.setWordWrap(True)
         self.content_layout.addWidget(manual)
@@ -500,8 +503,8 @@ class SetupWizard(QDialog):
         
         # Finish message
         finish_msg = QLabel(
-            "<p style='color: #888;'>Click <b>Finish</b> to start using RimModManager!</p>"
-            "<p style='color: #888;'>You can always change settings later.</p>"
+            "<p style='color: #666;'>Click <b>Finish</b> to start using RimModManager!</p>"
+            "<p style='color: #666;'>You can always change settings later.</p>"
         )
         finish_msg.setWordWrap(True)
         self.content_layout.addWidget(finish_msg)
