@@ -360,13 +360,19 @@ class GameDetector:
                     break
             
             # Deep search: look for RimWorldLinux binary anywhere under root
+            # Use rglob but with a reasonable limit to avoid slow scans
             try:
+                found = False
                 for item in root.rglob("RimWorldLinux"):
                     if item.is_file():
                         game_dir = item.parent
                         if self._is_valid_rimworld(game_dir):
                             self._add_standalone_install(game_dir)
+                            found = True
                             break
+                    # Stop after checking 100 files to avoid slow scans
+                    if found:
+                        break
             except (PermissionError, OSError):
                 pass
     

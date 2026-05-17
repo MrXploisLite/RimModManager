@@ -1564,39 +1564,47 @@ class MainWindow(QMainWindow):
     
     def _detect_installations(self):
         """Detect RimWorld installations."""
-        self.status_bar.showMessage("Detecting RimWorld installations...")
-        self.install_combo.clear()
-        
-        # Update custom paths from config
-        self.game_detector.custom_paths = self.config.config.custom_game_paths
-        
-        # Detect all installations
-        installations = self.game_detector.detect_all()
-        
-        # Also scan Wine prefixes
-        self.game_detector.scan_wine_prefixes()
-        
-        installations = self.game_detector.installations
-        
-        if not installations:
-            self.install_combo.addItem("No RimWorld installations found")
-            self.status_bar.showMessage("No RimWorld installations detected")
-            return
-        
-        # Populate combo box
-        for install in installations:
-            self.install_combo.addItem(install.display_name(), install)
-        
-        # Try to restore last selection
-        last_path = self.config.config.last_installation
-        if last_path:
-            for i in range(self.install_combo.count()):
-                install = self.install_combo.itemData(i)
-                if install and str(install.path) == last_path:
-                    self.install_combo.setCurrentIndex(i)
-                    break
-        
-        self.status_bar.showMessage(f"Found {len(installations)} installation(s)")
+        try:
+            self.status_bar.showMessage("🔍 Detecting RimWorld installations...")
+            QApplication.processEvents()
+            
+            self.install_combo.clear()
+            
+            # Update custom paths from config
+            self.game_detector.custom_paths = self.config.config.custom_game_paths
+            
+            # Detect all installations
+            installations = self.game_detector.detect_all()
+            
+            # Also scan Wine prefixes
+            self.game_detector.scan_wine_prefixes()
+            
+            installations = self.game_detector.installations
+            
+            if not installations:
+                self.install_combo.addItem("No RimWorld installations found")
+                self.status_bar.showMessage("⚠️ No RimWorld installations detected — click '➕ Add Custom' to add manually")
+                return
+            
+            # Populate combo box
+            for install in installations:
+                self.install_combo.addItem(install.display_name(), install)
+            
+            # Try to restore last selection
+            last_path = self.config.config.last_installation
+            if last_path:
+                for i in range(self.install_combo.count()):
+                    install = self.install_combo.itemData(i)
+                    if install and str(install.path) == last_path:
+                        self.install_combo.setCurrentIndex(i)
+                        break
+            
+            self.status_bar.showMessage(f"✅ Found {len(installations)} installation(s)")
+        except Exception as e:
+            log.exception("Detection failed")
+            self.install_combo.clear()
+            self.install_combo.addItem(f"Detection error: {e}")
+            self.status_bar.showMessage(f"❌ Detection failed: {e}")
     
     def _on_installation_changed(self, index: int):
         """Handle installation selection change."""
