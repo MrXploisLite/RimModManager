@@ -5,6 +5,25 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-05-17
+
+### Fixed
+- **Bare Except Clauses**: Replaced all `except Exception` with specific exception types across `build.py`, `mod_importer.py`, and `mod_parser.py`.
+- **SteamCMD Validation**: Downloads now fail gracefully with clear error messages when SteamCMD is missing or path is invalid.
+- **Download Directory Validation**: Write access is verified before attempting downloads.
+
+### Added
+- **Download Retry Logic**: SteamCMD downloads now retry up to 2 times on failure with 2-second backoff.
+- **Single-Instance Lock**: Prevents multiple app instances from running simultaneously (fcntl-based lock file).
+- **Atomic ModsConfig Writes**: ModsConfig.xml now uses temp-file + rename pattern to prevent corruption on crash.
+
+### Changed
+- **Improved Error Messages**: SteamCMD failures now include error codes and attempt counts.
+- **Tightened Exception Handling**: All broad exception catches replaced with specific exception types.
+
+### Tests
+- Added 8 new tests for SteamCMD validation, atomic writes, bare except detection, retry logic, and single-instance lock.
+
 ## [0.2.2] - 2026-05-17
 
 ### Fixed

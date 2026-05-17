@@ -7,7 +7,7 @@ Author: RimWorld Linux Community
 License: MIT
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 import sys
 import os
@@ -110,6 +110,23 @@ def main():
     logger = setup_logging(config.config_dir, debug="--debug" in sys.argv)
     logger.info("RimModManager starting...")
     
+    # Single-instance lock
+    import fcntl
+    lock_file = config.config_dir / ".instance.lock"
+    try:
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fd.write(str(os.getpid()))
+        lock_fd.flush()
+    except (IOError, OSError):
+        logger.warning("Another instance is already running. Exiting.")
+        from PyQt6.QtWidgets import QMessageBox
+        app_check = QApplication.instance()
+        if app_check is None:
+            app_check = QApplication(sys.argv)
+        QMessageBox.warning(None, "RimModManager", "Another instance of RimModManager is already running.")
+        return 1
+    
     # Import after dependency check
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
@@ -192,6 +209,17 @@ def main():
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.critical(None, "Startup Error", f"Failed to start application:\n{e}")
         return 1
+    
+    # Cleanup lock file on exit
+    import atexit
+    def _cleanup_lock():
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
+            lock_file.unlink(missing_ok=True)
+        except (IOError, OSError):
+            pass
+    atexit.register(_cleanup_lock)
     
     # Run the application
     return app.exec()

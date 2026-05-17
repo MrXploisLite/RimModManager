@@ -172,7 +172,7 @@ class ModImporter:
                     errors=[f"Unsupported format: {format_type.value}"],
                     warnings=[]
                 )
-        except Exception as e:
+        except (IOError, OSError, json.JSONDecodeError, ET.ParseError, ValueError, TypeError) as e:
             log.exception(f"Error importing {file_path}")
             return ImportResult(
                 success=False,

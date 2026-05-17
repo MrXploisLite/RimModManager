@@ -60,13 +60,13 @@ def build():
     
     # Try to use UPX if available
     try:
-        import shutil
-        if shutil.which('upx'):
+        import shutil as _shutil
+        if _shutil.which('upx'):
             print("✨ UPX found! Compression enabled.")
-            args.append('--upx-dir=' + str(Path(shutil.which('upx')).parent))
+            args.append('--upx-dir=' + str(Path(_shutil.which('upx')).parent))
         else:
             print("ℹ️ UPX not found. Install UPX for smaller executable size.")
-    except Exception:
+    except (ImportError, OSError):
         pass
 
     print(f"📦 Building with {len(excludes)} exclusions...")
@@ -86,7 +86,7 @@ def build():
             else:
                 print("⚠️ WARNING: Size exceeds 70MB target.")
                 
-    except Exception as e:
+    except (RuntimeError, OSError, ImportError) as e:
         print(f"\n❌ Build failed: {e}")
 
 if __name__ == "__main__":

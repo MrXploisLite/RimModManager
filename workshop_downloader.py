@@ -52,6 +52,7 @@ class WorkshopDownloader:
         r'steamcommunity\.com/workshop/filedetails/\?id=(\d+)',
         r'^(\d{7,12})$'  # Workshop IDs can be 7-12 digits$',  # Just the ID
     ]
+    MAX_RETRIES = 2  # Number of retry attempts for failed downloads
     
     def __init__(self, download_path: Path = None, steamcmd_path: str = ""):
         self.download_path = download_path or Path.home() / "RimWorld_Workshop_Mods"
@@ -291,8 +292,34 @@ After installation, restart this application.
         if self.on_progress:
             self.on_progress(task)
         
-        # Ensure download directory exists
-        self.download_path.mkdir(parents=True, exist_ok=True)
+        # Validate SteamCMD path before attempting download
+        if not self.steamcmd_path:
+            task.status = DownloadStatus.FAILED
+            task.error_message = "SteamCMD not found. Please install SteamCMD first."
+            if self.on_error:
+                self.on_error(task, task.error_message)
+            return False
+        
+        if not Path(self.steamcmd_path).exists():
+            task.status = DownloadStatus.FAILED
+            task.error_message = f"SteamCMD not found at: {self.steamcmd_path}"
+            if self.on_error:
+                self.on_error(task, task.error_message)
+            return False
+        
+        # Ensure download directory exists and is writable
+        try:
+            self.download_path.mkdir(parents=True, exist_ok=True)
+            # Test write access
+            test_file = self.download_path / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+        except OSError as e:
+            task.status = DownloadStatus.FAILED
+            task.error_message = f"Cannot write to download directory: {e}"
+            if self.on_error:
+                self.on_error(task, task.error_message)
+            return False
         
         # Create temp directory for SteamCMD download
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -307,94 +334,112 @@ After installation, restart this application.
                 "+quit"
             ]
             
-            try:
-                # Run SteamCMD
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1
-                )
-                
-                # Monitor output for progress
-                output_lines = []
-                for line in process.stdout:
-                    output_lines.append(line)
+            last_error = None
+            for attempt in range(1, self.MAX_RETRIES + 1):
+                try:
+                    log.debug(f"SteamCMD attempt {attempt}/{self.MAX_RETRIES} for mod {task.workshop_id}")
                     
-                    # Parse progress if possible
-                    if "Downloading" in line:
-                        task.progress = 25
-                    elif "downloading" in line.lower():
-                        # Try to extract percentage
-                        match = re.search(r'(\d+)%', line)
-                        if match:
-                            task.progress = int(match.group(1))
-                    elif "Success" in line:
-                        task.progress = 100
+                    # Run SteamCMD
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1
+                    )
                     
+                    # Monitor output for progress
+                    output_lines = []
+                    for line in process.stdout:
+                        output_lines.append(line)
+                        
+                        # Parse progress if possible
+                        if "Downloading" in line:
+                            task.progress = 25
+                        elif "downloading" in line.lower():
+                            # Try to extract percentage
+                            match = re.search(r'(\d+)%', line)
+                            if match:
+                                task.progress = int(match.group(1))
+                        elif "Success" in line:
+                            task.progress = 100
+                        
+                        if self.on_progress:
+                            self.on_progress(task)
+                        
+                        if self._cancel_flag:
+                            process.terminate()
+                            task.status = DownloadStatus.CANCELLED
+                            return False
+                    
+                    process.wait()
+                    
+                    if process.returncode != 0:
+                        last_error = f"SteamCMD returned error (code {process.returncode})"
+                        log.warning(f"Attempt {attempt} failed: {last_error}")
+                        if attempt < self.MAX_RETRIES:
+                            import time
+                            time.sleep(2)  # Wait before retry
+                        continue
+                    
+                    # Find downloaded mod
+                    workshop_content = temp_path / "steamapps/workshop/content" / self.RIMWORLD_APPID / task.workshop_id
+                    
+                    if not workshop_content.exists():
+                        last_error = "Download completed but mod folder not found"
+                        log.warning(f"Attempt {attempt} failed: {last_error}")
+                        if attempt < self.MAX_RETRIES:
+                            import time
+                            time.sleep(2)
+                        continue
+                    
+                    # Move to final destination
+                    task.status = DownloadStatus.EXTRACTING
                     if self.on_progress:
                         self.on_progress(task)
                     
-                    if self._cancel_flag:
-                        process.terminate()
-                        task.status = DownloadStatus.CANCELLED
-                        return False
-                
-                process.wait()
-                
-                if process.returncode != 0:
-                    task.status = DownloadStatus.FAILED
-                    task.error_message = "SteamCMD returned error. Check if mod ID is valid."
-                    if self.on_error:
-                        self.on_error(task, task.error_message)
-                    return False
-                
-                # Find downloaded mod
-                workshop_content = temp_path / "steamapps/workshop/content" / self.RIMWORLD_APPID / task.workshop_id
-                
-                if not workshop_content.exists():
-                    task.status = DownloadStatus.FAILED
-                    task.error_message = "Download completed but mod folder not found."
-                    if self.on_error:
-                        self.on_error(task, task.error_message)
-                    return False
-                
-                # Move to final destination
-                task.status = DownloadStatus.EXTRACTING
-                if self.on_progress:
-                    self.on_progress(task)
-                
-                final_path = self.download_path / task.workshop_id
-                
-                # Remove existing if present
-                if final_path.exists():
-                    shutil.rmtree(final_path)
-                
-                # Move downloaded mod
-                shutil.move(str(workshop_content), str(final_path))
-                
-                task.output_path = final_path
-                task.status = DownloadStatus.COMPLETE
-                task.progress = 100
-                
-                if self.on_complete:
-                    self.on_complete(task)
-                
-                return True
-                
-            except subprocess.TimeoutExpired:
-                task.status = DownloadStatus.FAILED
-                task.error_message = "Download timed out."
-                if self.on_error:
-                    self.on_error(task, task.error_message)
-                return False
-            except (OSError, IOError, subprocess.SubprocessError) as e:
-                task.status = DownloadStatus.FAILED
-                task.error_message = str(e)
-                if self.on_error:
-                    self.on_error(task, task.error_message)
-                return False
+                    final_path = self.download_path / task.workshop_id
+                    
+                    # Remove existing if present
+                    if final_path.exists():
+                        shutil.rmtree(final_path)
+                    
+                    # Move downloaded mod
+                    shutil.move(str(workshop_content), str(final_path))
+                    
+                    task.output_path = final_path
+                    task.status = DownloadStatus.COMPLETE
+                    task.progress = 100
+                    
+                    if self.on_complete:
+                        self.on_complete(task)
+                    
+                    if attempt > 1:
+                        log.info(f"Mod {task.workshop_id} downloaded successfully after {attempt} attempts")
+                    
+                    return True
+                    
+                except subprocess.TimeoutExpired:
+                    last_error = "Download timed out"
+                    log.warning(f"Attempt {attempt} timed out")
+                    if attempt < self.MAX_RETRIES:
+                        import time
+                        time.sleep(2)
+                    continue
+                except (OSError, IOError, subprocess.SubprocessError) as e:
+                    last_error = str(e)
+                    log.warning(f"Attempt {attempt} failed: {e}")
+                    if attempt < self.MAX_RETRIES:
+                        import time
+                        time.sleep(2)
+                    continue
+            
+            # All retries exhausted
+            task.status = DownloadStatus.FAILED
+            task.error_message = f"Failed after {self.MAX_RETRIES} attempts: {last_error}"
+            if self.on_error:
+                self.on_error(task, task.error_message)
+            return False
     
     def download_single(self, workshop_id: str) -> Optional[Path]:
         """

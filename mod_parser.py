@@ -1015,17 +1015,32 @@ class ModsConfigParser:
             lines = [line for line in pretty_xml.split('\n') if line.strip()]
             final_xml = '\n'.join(lines)
             
-            # Write
-            with open(mods_config, 'w', encoding='utf-8') as f:
-                f.write(final_xml)
-                f.flush()
-                os.fsync(f.fileno())
+            # Atomic write: write to temp file, then rename
+            import tempfile
+            mods_config_path = Path(mods_config)
+            fd, temp_path = tempfile.mkstemp(
+                suffix='.xml',
+                prefix='ModsConfig_',
+                dir=mods_config_path.parent
+            )
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    f.write(final_xml)
+                
+                # Atomic rename
+                Path(temp_path).replace(mods_config)
+            except (IOError, OSError):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
             
             log.info(f"ModsConfig written: {mods_config} ({len(filtered_mods)} mods)")
             
             return True
             
-        except Exception as e:
+        except (IOError, OSError, ET.ParseError, ValueError, TypeError) as e:
             log.error(f"ModsConfig write failed: {e}", exc_info=True)
             return False
 
