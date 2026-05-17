@@ -5,6 +5,22 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-05-17
+
+### Added
+- **Network Retry Logic**: Steam API calls (mod names, collection parsing, community rules) now retry up to 2 times with 2-second backoff.
+- **Workshop ID Validation**: Stricter validation for workshop IDs (must be 7-12 digits, numeric, reasonable range).
+- **Cache Corruption Detection**: Compatibility database now detects and removes corrupted cache files automatically.
+
+### Fixed
+- **Download Manager Validation**: SteamCMD path and download directory write access validated before starting downloads.
+- **HTTP Error Handling**: All network requests now properly distinguish between HTTP errors, URL errors, and JSON decode errors.
+- **Collection Parser**: Better error recovery when Steam API fails, falls back to HTML parsing gracefully.
+
+### Changed
+- **Improved Error Messages**: Network failures now show specific error types (HTTP code, network reason, parse error).
+- **Cache Metadata Resilience**: Corrupted metadata file no longer prevents loading valid cache data.
+
 ## [0.2.3] - 2026-05-17
 
 ### Fixed

@@ -88,7 +88,7 @@ class CompatibilityDatabase:
             return False
     
     def load_from_cache(self) -> bool:
-        """Load database from cache file."""
+        """Load database from cache file with corruption detection."""
         if not self.cache_file.exists():
             return False
         
@@ -96,25 +96,47 @@ class CompatibilityDatabase:
             with open(self.cache_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
+            # Validate basic structure
+            if not isinstance(data, dict) or 'rules' not in data:
+                log.warning("Cache file has invalid structure, removing")
+                self._remove_cache()
+                return False
+            
             self._db = self._parse_rules(data)
             
             # Load metadata
             if self.meta_file.exists():
-                with open(self.meta_file, 'r') as f:
-                    meta = json.load(f)
-                self._db.last_updated = meta.get("last_updated", 0)
-                self._db.source_url = meta.get("source_url", "")
+                try:
+                    with open(self.meta_file, 'r') as f:
+                        meta = json.load(f)
+                    self._db.last_updated = meta.get("last_updated", 0)
+                    self._db.source_url = meta.get("source_url", "")
+                except (json.JSONDecodeError, IOError):
+                    log.warning("Cache metadata corrupted, using defaults")
+                    self._db.last_updated = 0
+                    self._db.source_url = ""
             
             log.info(f"Loaded {self.rule_count} rules from cache")
             return True
             
         except (json.JSONDecodeError, IOError) as e:
             log.error(f"Failed to load cache: {e}")
+            # Try to remove corrupted cache
+            self._remove_cache()
             return False
+    
+    def _remove_cache(self) -> None:
+        """Remove corrupted cache files."""
+        for f in [self.cache_file, self.meta_file]:
+            try:
+                if f.exists():
+                    f.unlink()
+            except OSError:
+                pass
 
     def download(self, timeout: int = 30) -> bool:
         """
-        Download fresh database from GitHub.
+        Download fresh database from GitHub with retry logic.
         
         Args:
             timeout: Request timeout in seconds
@@ -124,41 +146,51 @@ class CompatibilityDatabase:
         """
         log.info(f"Downloading community rules from {COMMUNITY_RULES_URL}")
         
-        try:
-            req = urllib.request.Request(
-                COMMUNITY_RULES_URL,
-                headers={
-                    'User-Agent': 'RimModManager/2.0',
-                    'Accept': 'application/json',
-                }
-            )
+        max_retries = 2
+        last_error = None
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                req = urllib.request.Request(
+                    COMMUNITY_RULES_URL,
+                    headers={
+                        'User-Agent': 'RimModManager/2.0',
+                        'Accept': 'application/json',
+                    }
+                )
+                
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    data = json.loads(response.read().decode('utf-8'))
+                
+                # Parse and store
+                self._db = self._parse_rules(data)
+                self._db.last_updated = time.time()
+                self._db.source_url = COMMUNITY_RULES_URL
+                
+                # Save to cache
+                self._save_cache(data)
+                
+                log.info(f"Downloaded {self.rule_count} rules")
+                return True
+                
+            except json.JSONDecodeError as e:
+                last_error = f"Invalid JSON: {e}"
+                log.error(f"Attempt {attempt} failed: {last_error}")
+            except urllib.error.HTTPError as e:
+                last_error = f"HTTP error: {e.code}"
+                log.error(f"Attempt {attempt} failed: {last_error}")
+            except urllib.error.URLError as e:
+                last_error = f"Network error: {e.reason}"
+                log.error(f"Attempt {attempt} failed: {last_error}")
+            except (OSError, ValueError, TypeError) as e:
+                last_error = f"Unexpected error: {e}"
+                log.error(f"Attempt {attempt} failed: {last_error}")
             
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                data = json.loads(response.read().decode('utf-8'))
-            
-            # Parse and store
-            self._db = self._parse_rules(data)
-            self._db.last_updated = time.time()
-            self._db.source_url = COMMUNITY_RULES_URL
-            
-            # Save to cache
-            self._save_cache(data)
-            
-            log.info(f"Downloaded {self.rule_count} rules")
-            return True
-            
-        except json.JSONDecodeError as e:
-            log.error(f"Invalid JSON in rules database: {e}")
-            return False
-        except urllib.error.HTTPError as e:
-            log.error(f"HTTP error downloading rules: {e.code}")
-            return False
-        except urllib.error.URLError as e:
-            log.error(f"Network error downloading rules: {e}")
-            return False
-        except (OSError, ValueError, TypeError) as e:
-            log.error(f"Unexpected error downloading rules: {e}")
-            return False
+            if attempt < max_retries:
+                time.sleep(2)
+        
+        log.error(f"Failed to download rules after {max_retries} attempts: {last_error}")
+        return False
     
     def _save_cache(self, data: dict) -> None:
         """Save database to cache files."""

@@ -203,7 +203,23 @@ class LiveDownloadWorker(QThread):
         failed = 0
         skipped = 0
         
-        self.download_path.mkdir(parents=True, exist_ok=True)
+        # Validate SteamCMD path before starting
+        if not self.steamcmd_path or not Path(self.steamcmd_path).exists():
+            self.log_output.emit(f"[ERROR] SteamCMD not found at: {self.steamcmd_path}")
+            self.all_complete.emit(0, len(self.workshop_ids))
+            return
+        
+        # Validate and create download directory
+        try:
+            self.download_path.mkdir(parents=True, exist_ok=True)
+            # Test write access
+            test_file = self.download_path / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+        except OSError as e:
+            self.log_output.emit(f"[ERROR] Cannot write to download directory: {e}")
+            self.all_complete.emit(0, len(self.workshop_ids))
+            return
         
         # Check which mods already exist
         ids_to_download = []
@@ -813,42 +829,53 @@ class DownloadLogWidget(QWidget):
         self.workers_spin.setEnabled(True)
     
     def _fetch_mod_names(self, workshop_ids: list[str]) -> dict[str, str]:
-        """Fetch mod names from Steam Workshop API."""
+        """Fetch mod names from Steam Workshop API with retry logic."""
         import urllib.request
         import urllib.parse
         import json
         
         names = {}
+        max_retries = 2
         
-        try:
-            # Steam API endpoint
-            url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+        for attempt in range(1, max_retries + 1):
+            try:
+                url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+                
+                data = {"itemcount": len(workshop_ids)}
+                for i, wid in enumerate(workshop_ids):
+                    data[f"publishedfileids[{i}]"] = wid
+                
+                encoded_data = urllib.parse.urlencode(data).encode('utf-8')
+                
+                request = urllib.request.Request(url, data=encoded_data, method='POST')
+                request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+                
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read().decode('utf-8'))
+                
+                if 'response' in result and 'publishedfiledetails' in result['response']:
+                    for item in result['response']['publishedfiledetails']:
+                        wid = item.get('publishedfileid', '')
+                        title = item.get('title', '')
+                        if wid and title:
+                            names[wid] = title
+                
+                self._log_info(f"Fetched {len(names)} mod names from Steam")
+                return names
+                
+            except urllib.error.HTTPError as e:
+                self._log_info(f"HTTP error fetching names (attempt {attempt}): {e.code}")
+            except urllib.error.URLError as e:
+                reason = getattr(e, 'reason', str(e))
+                self._log_info(f"Network error fetching names (attempt {attempt}): {reason}")
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                self._log_info(f"Error fetching names (attempt {attempt}): {e}")
             
-            # Build POST data
-            data = {"itemcount": len(workshop_ids)}
-            for i, wid in enumerate(workshop_ids):
-                data[f"publishedfileids[{i}]"] = wid
-            
-            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-            
-            request = urllib.request.Request(url, data=encoded_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-            
-            if 'response' in result and 'publishedfiledetails' in result['response']:
-                for item in result['response']['publishedfiledetails']:
-                    wid = item.get('publishedfileid', '')
-                    title = item.get('title', '')
-                    if wid and title:
-                        names[wid] = title
-            
-            self._log_info(f"Fetched {len(names)} mod names from Steam")
-            
-        except (OSError, ValueError, RuntimeError) as e:
-            self._log_info(f"Could not fetch mod names: {e}")
+            if attempt < max_retries:
+                import time
+                time.sleep(2)
         
+        self._log_info(f"Could not fetch mod names after {max_retries} attempts")
         return names
     
     def _on_log(self, line: str):

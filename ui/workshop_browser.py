@@ -642,7 +642,7 @@ class WorkshopBrowser(QWidget):
         return []
     
     def _extract_workshop_id(self, url: str) -> Optional[str]:
-        """Extract workshop ID from URL or direct input."""
+        """Extract workshop ID from URL or direct input with validation."""
         patterns = [
             r'steamcommunity\.com/sharedfiles/filedetails/\?id=(\d+)',
             r'steamcommunity\.com/workshop/filedetails/\?id=(\d+)',
@@ -653,7 +653,10 @@ class WorkshopBrowser(QWidget):
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
-                return match.group(1)
+                workshop_id = match.group(1)
+                # Validate: must be numeric and reasonable range
+                if workshop_id.isdigit() and 1000000 <= int(workshop_id) <= 999999999999:
+                    return workshop_id
         
         return None
     
@@ -774,36 +777,50 @@ class WorkshopBrowser(QWidget):
         return True
     
     def _fetch_mod_names_batch(self, workshop_ids: list[str]) -> dict[str, str]:
-        """Fetch mod names for multiple IDs in one API call."""
+        """Fetch mod names for multiple IDs in one API call with retry logic."""
         import urllib.request
         import urllib.parse
         import json
+        import time
         
         names = {}
+        max_retries = 2
         
-        try:
-            url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
-            data = {"itemcount": len(workshop_ids)}
-            for i, wid in enumerate(workshop_ids):
-                data[f"publishedfileids[{i}]"] = wid
+        for attempt in range(1, max_retries + 1):
+            try:
+                url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
+                data = {"itemcount": len(workshop_ids)}
+                for i, wid in enumerate(workshop_ids):
+                    data[f"publishedfileids[{i}]"] = wid
+                
+                encoded_data = urllib.parse.urlencode(data).encode('utf-8')
+                
+                request = urllib.request.Request(url, data=encoded_data, method='POST')
+                request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+                
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read().decode('utf-8'))
+                
+                if 'response' in result and 'publishedfiledetails' in result['response']:
+                    for item in result['response']['publishedfiledetails']:
+                        wid = item.get('publishedfileid', '')
+                        title = item.get('title', '')
+                        if wid and title:
+                            names[wid] = title
+                
+                return names
+                
+            except urllib.error.HTTPError as e:
+                log.debug(f"HTTP error fetching names (attempt {attempt}): {e.code}")
+            except urllib.error.URLError as e:
+                log.debug(f"Network error fetching names (attempt {attempt}): {e.reason}")
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                log.debug(f"Error fetching names (attempt {attempt}): {e}")
             
-            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-            
-            request = urllib.request.Request(url, data=encoded_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-            
-            if 'response' in result and 'publishedfiledetails' in result['response']:
-                for item in result['response']['publishedfiledetails']:
-                    wid = item.get('publishedfileid', '')
-                    title = item.get('title', '')
-                    if wid and title:
-                        names[wid] = title
-        except (OSError, ValueError, RuntimeError) as e:
-            log.debug(f"Batch workshop title fetch failed: {e}")
+            if attempt < max_retries:
+                time.sleep(2)
         
+        log.debug(f"Batch workshop title fetch failed after {max_retries} attempts")
         return names
     
     def _parse_collection_async(self):
