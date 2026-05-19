@@ -7,7 +7,7 @@ Author: RimWorld Linux Community
 License: MIT
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.2"
 
 import sys
 import os

@@ -1,6 +1,6 @@
 # RimModManager Roadmap
 
-## Current Version: v0.3.0
+## Current Version: v0.5.2
 
 ---
 
@@ -60,9 +60,53 @@
 - [x] **Lazy Workshop Browser** — Init on first access for faster startup
 - [x] **132 tests passing** — Zero feature loss verified
 
+### v0.3.1 - Memory Optimization
+- [x] Lazy WebEngine import (only when Workshop tab clicked)
+- [x] ~100MB RAM savings on startup
+- [x] Deferred ui/__init__ import
+
+### v0.4.0 - Workshop Scraper (No WebEngine!)
+- [x] Replaced QWebEngine with stdlib-only scraper (urllib + json + re)
+- [x] Mod card grid UI with thumbnails, names, authors, descriptions
+- [x] Search & sort with pagination
+- [x] Async thumbnail loading
+- [x] RAM usage reduced to ~60MB (from ~150MB)
+- [x] Removed PyQt6-WebEngine dependency
+
+### v0.4.1 - Workshop Browser Improvements
+- [x] Auto-fetch on tab open
+- [x] 16 category filters (Buildings, Textures, Weapons, AI, etc.)
+- [x] Full mod metadata (dates, size, stats, tags)
+- [x] Requirements system with auto-detect and dialog
+- [x] Mod details popup
+- [x] Async detail fetching
+
+### v0.5.0 - Workshop Collections Support
+- [x] New "📁 Collections" tab alongside "📦 Mods" tab
+- [x] Browse collections with search, sort, and pagination
+- [x] Collection cards with metadata
+- [x] Collection details dialog with mod list
+- [x] Add entire collection to queue with one click
+- [x] Collection URL support in batch input
+- [x] 4 collection-specific sort options
+
+### v0.5.1 - Toolbar & Fullscreen Fix
+- [x] Toolbar moved to right side (vertical, icon-only)
+- [x] Fullscreen toggle fixed for Linux (windowState bitmask)
+- [x] QTabWidget import crash fixed
+- [x] SteamCMD test fixed
+
+### v0.5.2 - Rate Limiting & Details Fix
+- [x] 3-second rate limiting between Steam requests
+- [x] Exponential backoff retry for HTTP 429
+- [x] Collection details button now shows error dialog
+- [x] Mod descriptions fetched in background if missing
+- [x] Requirements checking deferred to "Add" click (not page load)
+- [x] Better error states for failed fetches
+
 ---
 
-## Future Plans (v0.4.0+)
+## Future Plans (v0.6.0+)
 
 ### Planned Features
 - [ ] **Mod dependency auto-resolution** — Auto-download missing dependencies
@@ -78,7 +122,7 @@
 
 ### Performance Goals
 - [ ] Reduce startup time by 50%
-- [ ] Memory usage under 150MB with WebEngine disabled
+- [ ] Memory usage under 50MB
 - [ ] Mod scanning under 2 seconds for 500+ mods
 - [ ] Support 1000+ mods without UI lag
 
@@ -99,4 +143,4 @@
 
 ---
 
-*Last Updated: 2026-05-17*
+*Last Updated: 2026-05-18*

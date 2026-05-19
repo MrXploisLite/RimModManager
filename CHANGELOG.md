@@ -5,6 +5,23 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-18 - Rate Limiting & Details Fix
+
+### Fixed
+- **Steam Rate Limiting (HTTP 429)**: Added 3-second minimum interval between requests to Steam with exponential backoff retry (5s, 10s). Prevents being blocked by Steam's rate limiter.
+- **Collection Details Button**: Now shows proper error dialog when fetch fails instead of silent failure. Error message explains rate limiting possibility.
+- **Mod Descriptions**: Mod details dialog now fetches full description in background if not available in initial scrape. Shows "Loading description..." while fetching.
+- **Requirements Checking**: Now fetches mod details only when user clicks "Add" (not on page load) to avoid rate limiting from loading 30+ mods at once.
+- **Error States**: Mod list in collection details shows "Failed to load" or "Error" for mods that couldn't be fetched instead of blank entries.
+
+## [0.5.1] - 2026-05-18 - Toolbar & Fullscreen Fix
+
+### Fixed
+- **Toolbar Position**: Moved to right side of window with vertical orientation and icon-only buttons (⛶ 🔍 🔄) for cleaner look.
+- **Fullscreen Toggle**: Replaced unreliable `isFullScreen()` with `windowState()` bitmask approach that works correctly on Linux window managers.
+- **QTabWidget Import Crash**: Added missing `QTabWidget` import that was causing force close when opening Workshop browser.
+- **SteamCMD Test Fix**: Fixed `test_download_fails_without_steamcmd` — empty string steamcmd_path was auto-detected to real steamcmd on system.
+
 ## [0.5.0] - 2026-05-18 - Workshop Collections Support
 
 ### Added
