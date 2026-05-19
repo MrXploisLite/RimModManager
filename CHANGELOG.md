@@ -5,6 +5,23 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-18 - Workshop Browser Improvements
+
+### Added
+- **Auto-fetch on Open**: Workshop tab now automatically loads mod data when first opened — no more clicking categories to see content.
+- **Category Filters**: Dropdown with 16 categories including Buildings, Textures, Weapons, AI, Maps, Races, Apparel, Tools, Gameplay, Libraries, World, Story, and more.
+- **Full Mod Metadata**: Each mod card now shows file size, posted date, updated date, subscription count, favorites, change notes count, and tags.
+- **Requirements System**: Automatically fetches mod dependencies in background. Shows warnings for missing requirements with mod IDs.
+- **Requirements Dialog**: When adding a mod with missing requirements, a dialog appears showing what's needed with options to add selected or add all + main mod.
+- **Auto-add Requirements**: Toggle checkbox to automatically add missing requirements when adding a mod to queue.
+- **Mod Details Dialog**: Click "Details" button on any mod card to see full metadata in a popup.
+- **Async Detail Fetching**: Mod details (including requirements) are fetched asynchronously in background threads — UI stays responsive.
+
+### Changed
+- **Improved Card Design**: Better layout with thumbnail, metadata rows, stats, tags, requirements warnings, and action buttons.
+- **Better Queue UI**: Added "Auto-add missing requirements" checkbox, improved styling.
+- **Navigation**: Category dropdown replaces individual buttons for cleaner UI.
+
 ## [0.4.0] - 2026-05-18 - Workshop Scraper (No WebEngine!)
 
 ### Added
