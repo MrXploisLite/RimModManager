@@ -1222,28 +1222,29 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage("Ready")
         
-        # Toolbar for quick access
-        toolbar = self.addToolBar("Main Toolbar")
+        # Toolbar for quick access - positioned on the right side
+        from PyQt6.QtWidgets import QToolBar
+        toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(Qt.ToolBarArea.RightToolBarArea, toolbar)
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
         toolbar.setIconSize(QSize(20, 20))
+        toolbar.setOrientation(Qt.Orientation.Vertical)
         
-        # Fullscreen button in toolbar
-        self._toolbar_fullscreen = QAction("⛶ Fullscreen", self)
+        # Fullscreen button
+        self._toolbar_fullscreen = QAction("⛶", self)
         self._toolbar_fullscreen.setToolTip("Toggle fullscreen (F11)")
         self._toolbar_fullscreen.triggered.connect(self._toggle_fullscreen)
         toolbar.addAction(self._toolbar_fullscreen)
         
-        toolbar.addSeparator()
-        
         # Detect button
-        self._toolbar_detect = QAction("🔍 Detect", self)
+        self._toolbar_detect = QAction("🔍", self)
         self._toolbar_detect.setToolTip("Re-scan for RimWorld installations")
         self._toolbar_detect.triggered.connect(self._detect_installations)
         toolbar.addAction(self._toolbar_detect)
         
         # Refresh button
-        self._toolbar_refresh = QAction("🔄 Refresh", self)
+        self._toolbar_refresh = QAction("🔄", self)
         self._toolbar_refresh.setToolTip("Rescan mods (F5)")
         self._toolbar_refresh.triggered.connect(self._scan_mods)
         toolbar.addAction(self._toolbar_refresh)
@@ -3621,12 +3622,13 @@ class MainWindow(QMainWindow):
     def _toggle_fullscreen(self, checked: bool = None):
         """Toggle fullscreen mode."""
         try:
-            if self.isFullScreen():
-                self.showNormal()
+            state = self.windowState()
+            if state & Qt.WindowState.WindowFullScreen:
+                self.setWindowState(state & ~Qt.WindowState.WindowFullScreen)
                 self._fullscreen_action.setChecked(False)
                 self.status_bar.showMessage("Exited full screen (F11)")
             else:
-                self.showFullScreen()
+                self.setWindowState(state | Qt.WindowState.WindowFullScreen)
                 self._fullscreen_action.setChecked(True)
                 self.status_bar.showMessage("Full screen mode (press F11 to exit)")
         except Exception as e:
