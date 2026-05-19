@@ -57,33 +57,38 @@ class DownloadQueueItem(QListWidgetItem):
 
 class ThumbLoader(QThread):
     """Background thread to load thumbnail images."""
-    finished = pyqtSignal(str, QPixmap)  # workshop_id, pixmap
+    finished = pyqtSignal(str, QPixmap)
     
-    def __init__(self, workshop_id: str, url: str):
-        super().__init__()
+    def __init__(self, workshop_id: str, url: str, parent=None):
+        super().__init__(parent)
         self.workshop_id = workshop_id
         self.url = url
+        self._abort = False
     
     def run(self):
         try:
             import urllib.request
             req = urllib.request.Request(self.url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                data = resp.read()
-                pixmap = QPixmap()
-                pixmap.loadFromData(data)
-                self.finished.emit(self.workshop_id, pixmap)
+                if not self._abort:
+                    data = resp.read()
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(data)
+                    self.finished.emit(self.workshop_id, pixmap)
         except Exception:
             pass
+    
+    def abort(self):
+        self._abort = True
 
 
 class ModDetailFetcher(QThread):
     """Background thread to fetch full mod details including requirements."""
-    finished = pyqtSignal(object)  # WorkshopMod
-    error = pyqtSignal(str, str)  # workshop_id, error_message
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str, str)
     
-    def __init__(self, workshop_id: str):
-        super().__init__()
+    def __init__(self, workshop_id: str, parent=None):
+        super().__init__(parent)
         self.workshop_id = workshop_id
     
     def run(self):
@@ -363,8 +368,8 @@ class ModCard(QFrame):
         if not self.mod.thumbnail_url:
             return
         
-        self._loader = ThumbLoader(self.mod.workshop_id, self.mod.thumbnail_url)
-        self._loader.finished.connect(self._on_thumb_loaded)
+        self._loader = ThumbLoader(self.mod.workshop_id, self.mod.thumbnail_url, parent=self)
+        self._loader.finished.connect(self._on_thumb_loaded, Qt.ConnectionType.QueuedConnection)
         self._loader.start()
     
     def _on_thumb_loaded(self, workshop_id: str, pixmap: QPixmap):
@@ -387,11 +392,11 @@ class ModCard(QFrame):
 
 class WorkshopFetcherThread(QThread):
     """Background thread to fetch workshop browse data."""
-    finished = pyqtSignal(object)  # WorkshopPage
+    finished = pyqtSignal(object)
     error = pyqtSignal(str)
     
-    def __init__(self, sort: str, page: int, search_text: str = "", tag: str = ""):
-        super().__init__()
+    def __init__(self, sort: str, page: int, search_text: str = "", tag: str = "", parent=None):
+        super().__init__(parent)
         self.sort = sort
         self.page = page
         self.search_text = search_text
@@ -563,17 +568,26 @@ class WorkshopBrowser(QWidget):
         
         # Auto-fetch on init (safe with error handling)
         try:
-            QTimer.singleShot(200, self._fetch_workshop)
+            QTimer.singleShot(300, self._fetch_workshop)
         except Exception:
             pass
     
     def cleanup(self):
-        """Clean up resources."""
+        """Clean up all running threads safely."""
+        # Stop main fetcher thread
         if self._fetcher_thread and self._fetcher_thread.isRunning():
-            self._fetcher_thread.wait()
-        for thread in self._detail_threads.values():
+            self._fetcher_thread.quit()
+            self._fetcher_thread.wait(2000)
+        
+        # Stop all detail fetcher threads
+        for thread in list(self._detail_threads.values()):
             if thread.isRunning():
-                thread.wait()
+                thread.quit()
+                thread.wait(2000)
+        self._detail_threads.clear()
+        
+        # Clear mod details cache
+        self._mod_details_cache.clear()
     
     def closeEvent(self, event):
         self.cleanup()
@@ -930,28 +944,23 @@ class WorkshopBrowser(QWidget):
     
     def _fetch_workshop(self):
         """Fetch workshop data in background thread."""
-        try:
-            if self._fetcher_thread and self._fetcher_thread.isRunning():
-                return
-            
-            self.loading_label.show()
-            self.loading_label.setText("⏳ Loading workshop data...")
-            self.btn_refresh.setEnabled(False)
-            
-            self._fetcher_thread = WorkshopFetcherThread(
-                sort=self.current_sort,
-                page=self.current_page,
-                search_text=self.current_search,
-                tag=self.current_tag,
-            )
-            self._fetcher_thread.setParent(self)
-            self._fetcher_thread.finished.connect(self._on_fetch_finished)
-            self._fetcher_thread.error.connect(self._on_fetch_error)
-            self._fetcher_thread.start()
-        except Exception as e:
-            log.error(f"Error starting workshop fetch: {e}")
-            self.loading_label.setText(f"❌ Error: {e}")
-            self.btn_refresh.setEnabled(True)
+        if self._fetcher_thread and self._fetcher_thread.isRunning():
+            return
+        
+        self.loading_label.show()
+        self.loading_label.setText("⏳ Loading workshop data...")
+        self.btn_refresh.setEnabled(False)
+        
+        self._fetcher_thread = WorkshopFetcherThread(
+            sort=self.current_sort,
+            page=self.current_page,
+            search_text=self.current_search,
+            tag=self.current_tag,
+            parent=self,
+        )
+        self._fetcher_thread.finished.connect(self._on_fetch_finished, Qt.ConnectionType.QueuedConnection)
+        self._fetcher_thread.error.connect(self._on_fetch_error, Qt.ConnectionType.QueuedConnection)
+        self._fetcher_thread.start()
     
     def _on_fetch_finished(self, page: WorkshopPage):
         """Handle fetched workshop data."""
@@ -1006,9 +1015,9 @@ class WorkshopBrowser(QWidget):
         if workshop_id in self._detail_threads:
             return
         
-        fetcher = ModDetailFetcher(workshop_id)
-        fetcher.finished.connect(lambda m: self._on_mod_details_fetched(m, card))
-        fetcher.error.connect(lambda wid, err: self._on_mod_details_error(wid, err, card))
+        fetcher = ModDetailFetcher(workshop_id, parent=self)
+        fetcher.finished.connect(lambda m: self._on_mod_details_fetched(m, card), Qt.ConnectionType.QueuedConnection)
+        fetcher.error.connect(lambda wid, err: self._on_mod_details_error(wid, err, card), Qt.ConnectionType.QueuedConnection)
         self._detail_threads[workshop_id] = fetcher
         fetcher.start()
     
@@ -1082,9 +1091,9 @@ class WorkshopBrowser(QWidget):
         else:
             # Fetch details first
             self.status_label.setText("Fetching mod details...")
-            fetcher = ModDetailFetcher(workshop_id)
-            fetcher.finished.connect(lambda m: self._show_mod_details_dialog(m))
-            fetcher.error.connect(lambda wid, err: self.status_label.setText(f"Error: {err}"))
+            fetcher = ModDetailFetcher(workshop_id, parent=self)
+            fetcher.finished.connect(lambda m: self._show_mod_details_dialog(m), Qt.ConnectionType.QueuedConnection)
+            fetcher.error.connect(lambda wid, err: self.status_label.setText(f"Error: {err}"), Qt.ConnectionType.QueuedConnection)
             fetcher.start()
     
     def _show_mod_details_dialog(self, mod: WorkshopMod):
