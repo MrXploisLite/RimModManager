@@ -3593,14 +3593,17 @@ class MainWindow(QMainWindow):
     
     def _toggle_fullscreen(self, checked: bool = None):
         """Toggle fullscreen mode."""
-        if self.isFullScreen():
-            self.showNormal()
-            self._fullscreen_action.setChecked(False)
-            self.status_bar.showMessage("Exited full screen (F11)")
-        else:
-            self.showFullScreen()
-            self._fullscreen_action.setChecked(True)
-            self.status_bar.showMessage("Full screen mode (press F11 to exit)")
+        try:
+            if self.isFullScreen():
+                self.showNormal()
+                self._fullscreen_action.setChecked(False)
+                self.status_bar.showMessage("Exited full screen (F11)")
+            else:
+                self.showFullScreen()
+                self._fullscreen_action.setChecked(True)
+                self.status_bar.showMessage("Full screen mode (press F11 to exit)")
+        except Exception as e:
+            log.error(f"Error toggling fullscreen: {e}")
     
     def _reset_window_size(self):
         """Reset window to default size."""

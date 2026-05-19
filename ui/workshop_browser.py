@@ -561,8 +561,11 @@ class WorkshopBrowser(QWidget):
         
         self._setup_ui()
         
-        # Auto-fetch on init
-        QTimer.singleShot(100, self._fetch_workshop)
+        # Auto-fetch on init (safe with error handling)
+        try:
+            QTimer.singleShot(200, self._fetch_workshop)
+        except Exception:
+            pass
     
     def cleanup(self):
         """Clean up resources."""
@@ -927,22 +930,28 @@ class WorkshopBrowser(QWidget):
     
     def _fetch_workshop(self):
         """Fetch workshop data in background thread."""
-        if self._fetcher_thread and self._fetcher_thread.isRunning():
-            return
-        
-        self.loading_label.show()
-        self.loading_label.setText("⏳ Loading workshop data...")
-        self.btn_refresh.setEnabled(False)
-        
-        self._fetcher_thread = WorkshopFetcherThread(
-            sort=self.current_sort,
-            page=self.current_page,
-            search_text=self.current_search,
-            tag=self.current_tag,
-        )
-        self._fetcher_thread.finished.connect(self._on_fetch_finished)
-        self._fetcher_thread.error.connect(self._on_fetch_error)
-        self._fetcher_thread.start()
+        try:
+            if self._fetcher_thread and self._fetcher_thread.isRunning():
+                return
+            
+            self.loading_label.show()
+            self.loading_label.setText("⏳ Loading workshop data...")
+            self.btn_refresh.setEnabled(False)
+            
+            self._fetcher_thread = WorkshopFetcherThread(
+                sort=self.current_sort,
+                page=self.current_page,
+                search_text=self.current_search,
+                tag=self.current_tag,
+            )
+            self._fetcher_thread.setParent(self)
+            self._fetcher_thread.finished.connect(self._on_fetch_finished)
+            self._fetcher_thread.error.connect(self._on_fetch_error)
+            self._fetcher_thread.start()
+        except Exception as e:
+            log.error(f"Error starting workshop fetch: {e}")
+            self.loading_label.setText(f"❌ Error: {e}")
+            self.btn_refresh.setEnabled(True)
     
     def _on_fetch_finished(self, page: WorkshopPage):
         """Handle fetched workshop data."""
