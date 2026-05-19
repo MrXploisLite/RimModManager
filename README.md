@@ -56,14 +56,28 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 
 ## 📥 Download
 
-**[⬇️ Download Latest Release](https://github.com/MrXploisLite/RimModManager/releases/latest)**
+**[⬇️ Download Latest Release (v0.5.2)](https://github.com/MrXploisLite/RimModManager/releases/tag/v0.5.2)**
 
-| Platform | File | Notes |
-|----------|------|-------|
-| 🪟 Windows | `RimModManager-Windows-x64.zip` | Extract and run |
-| 🐧 Linux | `RimModManager-Linux-x64.tar.gz` | Extract and run |
-| 🐧 Linux | `RimModManager-Linux-x64.deb` | `sudo dpkg -i *.deb` |
-| 🍎 macOS | `RimModManager-macOS-x64.zip` | Extract and run |
+| Platform | File | Size | Notes |
+|----------|------|------|-------|
+| 🐧 Linux | `RimModManager` (ELF 64-bit) | 61 MB | `chmod +x && ./RimModManager` |
+| 🪟 Windows | Coming soon | - | Build on Windows with PyInstaller |
+| 🍎 macOS | Coming soon | - | Build on macOS with PyInstaller |
+
+### Quick Start (Linux)
+```bash
+# Download from releases page
+chmod +x RimModManager
+./RimModManager
+```
+
+### Or Run from Source
+```bash
+git clone https://github.com/MrXploisLite/RimModManager.git
+cd RimModManager
+pip install PyQt6
+python main.py
+```
 
 ---
 
