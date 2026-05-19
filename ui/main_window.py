@@ -2982,16 +2982,16 @@ class MainWindow(QMainWindow):
         # LAZY IMPORT: Only import when actually needed
         from ui.workshop_browser import WorkshopBrowser
         
-        if not self.downloader:
-            return
-        
         # Get already downloaded mod IDs
         downloaded_ids = set()
-        workshop_path = self.config.get_default_workshop_path()
-        if workshop_path.exists():
-            for item in workshop_path.iterdir():
-                if item.is_dir() and item.name.isdigit():
-                    downloaded_ids.add(item.name)
+        try:
+            workshop_path = self.config.get_default_workshop_path()
+            if workshop_path.exists():
+                for item in workshop_path.iterdir():
+                    if item.is_dir() and item.name.isdigit():
+                        downloaded_ids.add(item.name)
+        except Exception:
+            pass
         
         # Remove placeholder if exists
         if self.workshop_placeholder:
@@ -3002,10 +3002,10 @@ class MainWindow(QMainWindow):
         if self.workshop_browser:
             self.workshop_browser.setParent(None)
         
-        # Check if WebEngine is disabled in settings (saves ~150MB RAM)
+        # Check if WebEngine is disabled in settings
         disable_webengine = self.config.config.disable_webengine
         
-        # Create new workshop browser (pass disable flag)
+        # Create new workshop browser
         self.workshop_browser = WorkshopBrowser(
             downloaded_ids, 
             parent=self.workshop_tab,
