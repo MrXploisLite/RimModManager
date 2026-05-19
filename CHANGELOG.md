@@ -5,6 +5,16 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-05-18 - Automated Builds
+
+### Added
+- **GitHub Actions**: Automated cross-platform builds for Linux, Windows, and macOS on every release.
+- **Release Artifacts**: Binaries are now automatically uploaded to GitHub releases.
+
+### Changed
+- **Build Script**: Updated `build.py` to rename output per platform (`RimModManager-Linux-x64`, `RimModManager-Windows-x64.exe`, `RimModManager-macOS-x64`).
+- **README**: Updated download section with new binary names and build instructions.
+
 ## [0.5.2] - 2026-05-18 - Rate Limiting & Details Fix
 
 ### Fixed
