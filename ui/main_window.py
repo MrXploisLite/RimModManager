@@ -19,7 +19,8 @@ from PyQt6.QtWidgets import (
     QInputDialog, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QColor, QKeySequence, QShortcut
+from PyQt6.QtGui import QAction, QColor, QKeySequence, QShortcut, QIcon
+from PyQt6.QtCore import QSize
 
 from config_handler import ConfigHandler
 from game_detector import GameDetector, RimWorldInstallation, InstallationType, PLATFORM
@@ -1220,6 +1221,32 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.progress_bar)
         
         self.status_bar.showMessage("Ready")
+        
+        # Toolbar for quick access
+        toolbar = self.addToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(QSize(20, 20))
+        
+        # Fullscreen button in toolbar
+        self._toolbar_fullscreen = QAction("⛶ Fullscreen", self)
+        self._toolbar_fullscreen.setToolTip("Toggle fullscreen (F11)")
+        self._toolbar_fullscreen.triggered.connect(self._toggle_fullscreen)
+        toolbar.addAction(self._toolbar_fullscreen)
+        
+        toolbar.addSeparator()
+        
+        # Detect button
+        self._toolbar_detect = QAction("🔍 Detect", self)
+        self._toolbar_detect.setToolTip("Re-scan for RimWorld installations")
+        self._toolbar_detect.triggered.connect(self._detect_installations)
+        toolbar.addAction(self._toolbar_detect)
+        
+        # Refresh button
+        self._toolbar_refresh = QAction("🔄 Refresh", self)
+        self._toolbar_refresh.setToolTip("Rescan mods (F5)")
+        self._toolbar_refresh.triggered.connect(self._scan_mods)
+        toolbar.addAction(self._toolbar_refresh)
     
     def _setup_menus(self):
         """Set up the menu bar."""
