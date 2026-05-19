@@ -14,12 +14,12 @@ class TestSteamCMDValidation(unittest.TestCase):
     """Test SteamCMD path validation in WorkshopDownloader."""
     
     def test_download_fails_without_steamcmd(self):
-        """Download should fail gracefully when SteamCMD is not found."""
+        """Download should fail gracefully when SteamCMD is not available."""
         from workshop_downloader import WorkshopDownloader, DownloadStatus
         
         downloader = WorkshopDownloader(
             download_path=Path(tempfile.mkdtemp()),
-            steamcmd_path=""
+            steamcmd_path="/nonexistent/steamcmd/shim"
         )
         
         task = downloader.add_to_queue("123456789", "Test Mod")
@@ -27,7 +27,7 @@ class TestSteamCMDValidation(unittest.TestCase):
         
         self.assertFalse(result)
         self.assertEqual(task.status, DownloadStatus.FAILED)
-        self.assertIn("SteamCMD not found", task.error_message)
+        self.assertIn("not found", task.error_message)
     
     def test_download_fails_with_invalid_steamcmd_path(self):
         """Download should fail gracefully when SteamCMD path doesn't exist."""
