@@ -1483,8 +1483,8 @@ class WorkshopBrowser(QWidget):
             self.mod_cards.append(card)
             card.load_thumbnail()
             
-            # Fetch full details asynchronously for requirements checking
-            self._fetch_mod_details_async(mod.workshop_id, card)
+            # Don't auto-fetch details for all mods - only fetch when user clicks Details
+            # This avoids rate limiting from Steam
         
         QApplication.processEvents()
     
@@ -1664,8 +1664,19 @@ class WorkshopBrowser(QWidget):
             self.status_label.setText("Fetching collection details...")
             fetcher = CollectionDetailFetcherThread(collection_id, parent=self)
             fetcher.finished.connect(lambda c: self._show_collection_details_dialog(c), Qt.ConnectionType.QueuedConnection)
-            fetcher.error.connect(lambda cid: self.status_label.setText(f"Error: {cid}"), Qt.ConnectionType.QueuedConnection)
+            fetcher.error.connect(lambda cid: self._on_collection_details_error(cid), Qt.ConnectionType.QueuedConnection)
             fetcher.start()
+    
+    def _on_collection_details_error(self, collection_id: str):
+        """Handle collection details fetch error."""
+        self.status_label.setText(f"Failed to fetch collection details. Try again later.")
+        QMessageBox.warning(
+            self,
+            "Fetch Failed",
+            f"Could not fetch details for this collection.\n\n"
+            f"This may be due to Steam rate limiting.\n"
+            f"Please wait a moment and try again."
+        )
     
     def _show_collection_details_dialog(self, collection: WorkshopCollection):
         """Show a dialog with collection details."""
@@ -1747,9 +1758,9 @@ class WorkshopBrowser(QWidget):
                         item.setText(f"{status} {mod_name_cache[mod_id]}")
                     continue
                 
-                # Fetch from Steam
+                # Fetch from Steam with rate limiting
                 try:
-                    mod = fetch_mod_details(mod_id, timeout=10)
+                    mod = fetch_mod_details(mod_id, timeout=15)
                     if mod:
                         mod_name_cache[mod_id] = mod.name
                         self._mod_details_cache[mod_id] = mod
@@ -1758,8 +1769,15 @@ class WorkshopBrowser(QWidget):
                         if item:
                             status = "✅" if mod_id in self.downloaded_ids else "📦"
                             item.setText(f"{status} {mod.name}")
+                    else:
+                        # Fetch failed
+                        item = mods_list.item(i)
+                        if item:
+                            item.setText(f"📦 Failed to load ({mod_id})")
                 except Exception:
-                    pass
+                    item = mods_list.item(i)
+                    if item:
+                        item.setText(f"📦 Error ({mod_id})")
         
         import threading
         threading.Thread(target=fetch_mod_names, daemon=True).start()
@@ -1824,8 +1842,38 @@ class WorkshopBrowser(QWidget):
                         dialog.exec()
                         return
         
-        # No requirements or already checked
-        self._add_id_to_queue(workshop_id)
+        # No requirements or not cached - fetch details first
+        self.status_label.setText("Checking requirements...")
+        fetcher = ModDetailFetcher(workshop_id, parent=self)
+        fetcher.finished.connect(lambda m: self._on_add_with_requirements(m), Qt.ConnectionType.QueuedConnection)
+        fetcher.error.connect(lambda wid, err: self._add_id_to_queue(wid), Qt.ConnectionType.QueuedConnection)
+        fetcher.start()
+    
+    def _on_add_with_requirements(self, mod: WorkshopMod):
+        """Handle add after fetching requirements."""
+        self._mod_details_cache[mod.workshop_id] = mod
+        
+        if mod.required_mod_ids:
+            missing = []
+            for req_id in mod.required_mod_ids:
+                if req_id not in self.downloaded_ids and req_id not in self.queue_ids:
+                    missing.append(req_id)
+            
+            if missing:
+                if self.auto_req_check.isChecked():
+                    self._add_id_to_queue(mod.workshop_id, mod.name)
+                    for req_id in missing:
+                        self._add_id_to_queue(req_id, f"Required by {mod.name}")
+                    self.status_label.setText(f"Added {mod.name} + {len(missing)} requirements")
+                    return
+                else:
+                    dialog = RequirementsDialog(mod, missing, self)
+                    dialog.add_all_requested.connect(self._add_ids_to_queue)
+                    dialog.exec()
+                    return
+        
+        # No requirements
+        self._add_id_to_queue(mod.workshop_id, mod.name)
     
     def _on_details_requested(self, workshop_id: str):
         """Show mod details dialog."""
@@ -1837,8 +1885,20 @@ class WorkshopBrowser(QWidget):
             self.status_label.setText("Fetching mod details...")
             fetcher = ModDetailFetcher(workshop_id, parent=self)
             fetcher.finished.connect(lambda m: self._show_mod_details_dialog(m), Qt.ConnectionType.QueuedConnection)
-            fetcher.error.connect(lambda wid, err: self.status_label.setText(f"Error: {err}"), Qt.ConnectionType.QueuedConnection)
+            fetcher.error.connect(lambda wid, err: self._on_mod_details_error(wid, err), Qt.ConnectionType.QueuedConnection)
             fetcher.start()
+    
+    def _on_mod_details_error(self, workshop_id: str, error: str):
+        """Handle mod details fetch error."""
+        self.status_label.setText(f"Failed to fetch mod details. Try again later.")
+        QMessageBox.warning(
+            self,
+            "Fetch Failed",
+            f"Could not fetch details for this mod.\n\n"
+            f"Error: {error}\n\n"
+            f"This may be due to Steam rate limiting.\n"
+            f"Please wait a moment and try again."
+        )
     
     def _show_mod_details_dialog(self, mod: WorkshopMod):
         """Show a dialog with full mod details."""
@@ -1967,15 +2027,21 @@ class WorkshopBrowser(QWidget):
                             item.setText(f"{status} {name}")
                         continue
                     try:
-                        req_mod = fetch_mod_details(req_id, timeout=10)
+                        req_mod = fetch_mod_details(req_id, timeout=15)
                         if req_mod:
                             self._mod_details_cache[req_id] = req_mod
                             item = req_list.item(i)
                             if item:
                                 status = "✅" if req_id in self.downloaded_ids else "⚠️"
                                 item.setText(f"{status} {req_mod.name}")
+                        else:
+                            item = req_list.item(i)
+                            if item:
+                                item.setText(f"⚠️ Failed to load ({req_id})")
                     except Exception:
-                        pass
+                        item = req_list.item(i)
+                        if item:
+                            item.setText(f"⚠️ Error ({req_id})")
             
             import threading
             threading.Thread(target=fetch_req_names, daemon=True).start()
@@ -1989,7 +2055,25 @@ class WorkshopBrowser(QWidget):
         
         desc_scroll = QTextEdit()
         desc_scroll.setReadOnly(True)
-        desc_scroll.setPlainText(mod.description or "No description available.")
+        
+        if mod.description:
+            desc_scroll.setPlainText(mod.description)
+        else:
+            desc_scroll.setPlainText("Loading description...")
+            # Fetch full description in background
+            def fetch_full_desc():
+                try:
+                    full_mod = fetch_mod_details(mod.workshop_id, timeout=15)
+                    if full_mod and full_mod.description:
+                        # Update UI from main thread
+                        desc_scroll.setPlainText(full_mod.description)
+                        self._mod_details_cache[mod.workshop_id] = full_mod
+                except Exception:
+                    desc_scroll.setPlainText("Description not available. This may be due to Steam rate limiting.")
+            
+            import threading
+            threading.Thread(target=fetch_full_desc, daemon=True).start()
+        
         desc_scroll.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e2e;

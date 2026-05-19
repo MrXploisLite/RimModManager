@@ -4,6 +4,7 @@ Fetches and parses Steam Workshop pages using stdlib only.
 Extracts mod metadata including requirements, dates, ratings, and categories.
 """
 
+import time
 import re
 import json
 import logging
@@ -24,6 +25,8 @@ USER_AGENT = (
 APP_ID = "294100"  # RimWorld
 
 _opener = None
+_last_request_time = 0
+_MIN_REQUEST_INTERVAL = 3.0  # Minimum seconds between requests to avoid rate limiting
 
 def _get_opener() -> urllib.request.OpenerDirector:
     """Get a URL opener with cookie support."""
@@ -33,6 +36,18 @@ def _get_opener() -> urllib.request.OpenerDirector:
         cookie_handler = urllib.request.HTTPCookieProcessor(cookie_jar)
         _opener = urllib.request.build_opener(cookie_handler)
     return _opener
+
+
+def _rate_limit():
+    """Enforce minimum time between requests to avoid HTTP 429."""
+    global _last_request_time
+    now = time.time()
+    elapsed = now - _last_request_time
+    if elapsed < _MIN_REQUEST_INTERVAL:
+        wait_time = _MIN_REQUEST_INTERVAL - elapsed
+        log.debug(f"Rate limiting: waiting {wait_time:.1f}s")
+        time.sleep(wait_time)
+    _last_request_time = time.time()
 
 
 @dataclass
@@ -136,30 +151,40 @@ WORKSHOP_COLLECTION_CATEGORIES = [
 ]
 
 
-def _fetch_html(url: str, timeout: int = 15) -> Optional[str]:
-    """Fetch HTML from a URL with proper headers and cookie support."""
+def _fetch_html(url: str, timeout: int = 15, retries: int = 2) -> Optional[str]:
+    """Fetch HTML from a URL with proper headers, cookie support, and rate limiting."""
     log.debug(f"Fetching: {url}")
-    try:
-        opener = _get_opener()
-        request = urllib.request.Request(url, headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "identity",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-        })
-        with opener.open(request, timeout=timeout) as response:
-            return response.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        log.error(f"HTTP error {e.code}: {e.reason}")
-        return None
-    except urllib.error.URLError as e:
-        log.error(f"URL error: {e.reason}")
-        return None
-    except Exception as e:
-        log.error(f"Fetch error: {e}")
-        return None
+    
+    for attempt in range(retries + 1):
+        _rate_limit()
+        try:
+            opener = _get_opener()
+            request = urllib.request.Request(url, headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "identity",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            })
+            with opener.open(request, timeout=timeout) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < retries:
+                wait = 5 * (attempt + 1)
+                log.warning(f"Rate limited (429), waiting {wait}s before retry {attempt + 1}/{retries}")
+                time.sleep(wait)
+                continue
+            log.error(f"HTTP error {e.code}: {e.reason}")
+            return None
+        except urllib.error.URLError as e:
+            log.error(f"URL error: {e.reason}")
+            return None
+        except Exception as e:
+            log.error(f"Fetch error: {e}")
+            return None
+    
+    return None
 
 
 def parse_workshop_html(html: str, is_collection_view: bool = False) -> WorkshopPage:
@@ -476,11 +501,17 @@ def fetch_mod_details(workshop_id: str, timeout: int = 15) -> Optional[WorkshopM
     if author_match:
         mod.author = author_match.group(1).strip()
 
-    # Extract description
-    desc_match = re.search(r'<div\s+class="workshopItemDescription">(.*?)</div>', html, re.DOTALL)
+    # Extract description - try multiple patterns
+    desc_match = re.search(r'<div\s+class="workshopItemDescription"[^>]*>(.*?)</div>', html, re.DOTALL)
     if desc_match:
         desc = re.sub(r'<[^>]+>', '', desc_match.group(1))
         mod.description = desc.strip()[:500]
+    else:
+        # Fallback: try to find any description-like content
+        desc_match2 = re.search(r'id="WorkshopItemDescription"[^>]*>(.*?)</div>', html, re.DOTALL)
+        if desc_match2:
+            desc = re.sub(r'<[^>]+>', '', desc_match2.group(1))
+            mod.description = desc.strip()[:500]
 
     # Extract thumbnail
     thumb_match = re.search(r'<img[^>]+id="previewImage"[^>]+src="([^"]+)"', html)
