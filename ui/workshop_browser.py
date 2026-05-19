@@ -1671,8 +1671,8 @@ class WorkshopBrowser(QWidget):
         """Show a dialog with collection details."""
         dialog = QDialog(self)
         dialog.setWindowTitle(collection.name)
-        dialog.setMinimumWidth(600)
-        dialog.setMinimumHeight(500)
+        dialog.setMinimumWidth(650)
+        dialog.setMinimumHeight(550)
         
         layout = QVBoxLayout(dialog)
         
@@ -1682,7 +1682,7 @@ class WorkshopBrowser(QWidget):
         layout.addWidget(title)
         
         # Meta info
-        meta = QLabel(f"👤 {collection.author} | 📦 {collection.mod_count} mods")
+        meta = QLabel(f"👤 {collection.author} | 📦 {len(collection.mod_ids)} mods")
         meta.setStyleSheet("color: #a6adc8; font-size: 12px;")
         layout.addWidget(meta)
         
@@ -1698,12 +1698,14 @@ class WorkshopBrowser(QWidget):
             desc.setWordWrap(True)
             layout.addWidget(desc)
         
-        # Mods list
+        # Mods list header
         mods_label = QLabel(f"Mods in collection ({len(collection.mod_ids)}):")
         mods_label.setStyleSheet("color: #a6adc8; font-size: 13px; margin-top: 10px;")
         layout.addWidget(mods_label)
         
+        # Mods list with proper names
         mods_list = QListWidget()
+        mods_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         mods_list.setStyleSheet("""
             QListWidget {
                 background-color: #1e1e2e;
@@ -1711,17 +1713,56 @@ class WorkshopBrowser(QWidget):
                 border: 1px solid #45475a;
                 border-radius: 6px;
             }
+            QListWidget::item {
+                padding: 4px 8px;
+                border-bottom: 1px solid #313244;
+            }
+            QListWidget::item:selected {
+                background-color: #45475a;
+            }
         """)
         
-        for mod_id in collection.mod_ids[:50]:  # Show first 50
-            status = "✅" if mod_id in self.downloaded_ids else "📦"
-            item = QListWidgetItem(f"{status} {mod_id}")
-            mods_list.addItem(item)
+        # Populate with IDs first (fast), then fetch names async
+        mod_name_cache = {}
         
-        if len(collection.mod_ids) > 50:
-            more_item = QListWidgetItem(f"... and {len(collection.mod_ids) - 50} more mods")
-            more_item.setStyleSheet("color: #6c7086;")
-            mods_list.addItem(more_item)
+        # Add items with IDs as placeholder
+        for mod_id in collection.mod_ids:
+            status = "✅" if mod_id in self.downloaded_ids else "📦"
+            item = QListWidgetItem(f"{status} Loading... ({mod_id})")
+            item.setData(Qt.ItemDataRole.UserRole, mod_id)
+            mods_list.addItem(item)
+            
+            # Check cache first
+            if mod_id in self._mod_details_cache:
+                mod_name_cache[mod_id] = self._mod_details_cache[mod_id].name
+        
+        # Async fetch mod names
+        def fetch_mod_names():
+            for i, mod_id in enumerate(collection.mod_ids):
+                if mod_id in mod_name_cache:
+                    # Update from cache
+                    item = mods_list.item(i)
+                    if item:
+                        status = "✅" if mod_id in self.downloaded_ids else "📦"
+                        item.setText(f"{status} {mod_name_cache[mod_id]}")
+                    continue
+                
+                # Fetch from Steam
+                try:
+                    mod = fetch_mod_details(mod_id, timeout=10)
+                    if mod:
+                        mod_name_cache[mod_id] = mod.name
+                        self._mod_details_cache[mod_id] = mod
+                        # Update UI from main thread
+                        item = mods_list.item(i)
+                        if item:
+                            status = "✅" if mod_id in self.downloaded_ids else "📦"
+                            item.setText(f"{status} {mod.name}")
+                except Exception:
+                    pass
+        
+        import threading
+        threading.Thread(target=fetch_mod_names, daemon=True).start()
         
         layout.addWidget(mods_list)
         
@@ -1803,8 +1844,8 @@ class WorkshopBrowser(QWidget):
         """Show a dialog with full mod details."""
         dialog = QDialog(self)
         dialog.setWindowTitle(mod.name)
-        dialog.setMinimumWidth(600)
-        dialog.setMinimumHeight(400)
+        dialog.setMinimumWidth(650)
+        dialog.setMinimumHeight(500)
         
         layout = QVBoxLayout(dialog)
         
@@ -1813,34 +1854,154 @@ class WorkshopBrowser(QWidget):
         title.setStyleSheet("color: #cdd6f4; font-size: 18px; font-weight: bold;")
         layout.addWidget(title)
         
+        # Workshop ID row
+        id_row = QHBoxLayout()
+        id_label = QLabel(f"Workshop ID: {mod.workshop_id}")
+        id_label.setStyleSheet("color: #6c7086; font-size: 11px; font-family: monospace;")
+        id_row.addWidget(id_label, 1)
+        
+        copy_id_btn = QPushButton("📋 Copy ID")
+        copy_id_btn.setFixedWidth(80)
+        copy_id_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #313244;
+                color: #a6adc8;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #45475a;
+            }
+        """)
+        copy_id_btn.clicked.connect(lambda: self._copy_to_clipboard(mod.workshop_id, "Mod ID copied!"))
+        id_row.addWidget(copy_id_btn)
+        layout.addLayout(id_row)
+        
         # Meta info
-        meta = QLabel(f"👤 {mod.author} | 📅 {mod.updated_date} | 💾 {mod.file_size}")
-        meta.setStyleSheet("color: #a6adc8; font-size: 12px;")
-        layout.addWidget(meta)
+        meta_parts = []
+        if mod.author:
+            meta_parts.append(f"👤 {mod.author}")
+        if mod.posted_date:
+            meta_parts.append(f"📅 Posted: {mod.posted_date}")
+        if mod.updated_date:
+            meta_parts.append(f"🔄 Updated: {mod.updated_date}")
+        if mod.file_size:
+            meta_parts.append(f"💾 {mod.file_size}")
+        
+        if meta_parts:
+            meta = QLabel(" | ".join(meta_parts))
+            meta.setStyleSheet("color: #a6adc8; font-size: 12px;")
+            meta.setWordWrap(True)
+            layout.addWidget(meta)
         
         # Stats
-        stats = QLabel(f"📥 {mod.subscriptions} | ⭐ {mod.favorites} | 📝 {mod.change_notes} updates")
-        stats.setStyleSheet("color: #89b4fa; font-size: 12px;")
-        layout.addWidget(stats)
+        stats_parts = []
+        if mod.subscriptions:
+            stats_parts.append(f"📥 {mod.subscriptions} subscriptions")
+        if mod.favorites:
+            stats_parts.append(f"⭐ {mod.favorites} favorites")
+        if mod.change_notes > 0:
+            stats_parts.append(f"📝 {mod.change_notes} updates")
+        
+        if stats_parts:
+            stats = QLabel(" | ".join(stats_parts))
+            stats.setStyleSheet("color: #89b4fa; font-size: 12px;")
+            layout.addWidget(stats)
         
         # Tags
         if mod.tags:
-            tags_label = QLabel("Tags: " + ", ".join(mod.tags))
-            tags_label.setStyleSheet("color: #94e2d5; font-size: 11px;")
-            tags_label.setWordWrap(True)
-            layout.addWidget(tags_label)
+            tags_row = QHBoxLayout()
+            tags_row.setSpacing(6)
+            tags_label = QLabel("Tags:")
+            tags_label.setStyleSheet("color: #a6adc8; font-size: 11px; font-weight: bold;")
+            tags_row.addWidget(tags_label)
+            
+            for tag in mod.tags[:8]:
+                tag_badge = QLabel(tag)
+                tag_badge.setStyleSheet("""
+                    background-color: #313244;
+                    color: #94e2d5;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                """)
+                tags_row.addWidget(tag_badge)
+            
+            tags_row.addStretch()
+            layout.addLayout(tags_row)
         
         # Requirements
         if mod.required_mod_ids:
-            req_label = QLabel("Requirements: " + ", ".join(mod.required_mod_ids))
-            req_label.setStyleSheet("color: #f9e2af; font-size: 11px;")
+            req_label = QLabel(f"⚠️ Required mods ({len(mod.required_mod_ids)}):")
+            req_label.setStyleSheet("color: #f9e2af; font-size: 12px; font-weight: bold; margin-top: 8px;")
             layout.addWidget(req_label)
+            
+            req_list = QListWidget()
+            req_list.setMaximumHeight(120)
+            req_list.setStyleSheet("""
+                QListWidget {
+                    background-color: #1e1e2e;
+                    color: #cdd6f4;
+                    border: 1px solid #45475a;
+                    border-radius: 6px;
+                }
+            """)
+            
+            # Populate with IDs first, fetch names async
+            for req_id in mod.required_mod_ids:
+                status = "✅" if req_id in self.downloaded_ids else "⚠️"
+                item = QListWidgetItem(f"{status} {req_id}")
+                item.setData(Qt.ItemDataRole.UserRole, req_id)
+                req_list.addItem(item)
+            
+            # Async fetch requirement names
+            def fetch_req_names():
+                for i, req_id in enumerate(mod.required_mod_ids):
+                    if req_id in self._mod_details_cache:
+                        name = self._mod_details_cache[req_id].name
+                        item = req_list.item(i)
+                        if item:
+                            status = "✅" if req_id in self.downloaded_ids else "⚠️"
+                            item.setText(f"{status} {name}")
+                        continue
+                    try:
+                        req_mod = fetch_mod_details(req_id, timeout=10)
+                        if req_mod:
+                            self._mod_details_cache[req_id] = req_mod
+                            item = req_list.item(i)
+                            if item:
+                                status = "✅" if req_id in self.downloaded_ids else "⚠️"
+                                item.setText(f"{status} {req_mod.name}")
+                    except Exception:
+                        pass
+            
+            import threading
+            threading.Thread(target=fetch_req_names, daemon=True).start()
+            
+            layout.addWidget(req_list)
         
-        # Description
-        desc = QLabel(mod.description)
-        desc.setStyleSheet("color: #cdd6f4; font-size: 12px;")
-        desc.setWordWrap(True)
-        layout.addWidget(desc)
+        # Description - scrollable
+        desc_label = QLabel("📄 Description:")
+        desc_label.setStyleSheet("color: #a6adc8; font-size: 12px; font-weight: bold; margin-top: 8px;")
+        layout.addWidget(desc_label)
+        
+        desc_scroll = QTextEdit()
+        desc_scroll.setReadOnly(True)
+        desc_scroll.setPlainText(mod.description or "No description available.")
+        desc_scroll.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e2e;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 12px;
+            }
+        """)
+        desc_scroll.setMinimumHeight(120)
+        layout.addWidget(desc_scroll)
         
         # Buttons
         btn_layout = QHBoxLayout()
@@ -1849,6 +2010,23 @@ class WorkshopBrowser(QWidget):
         open_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(mod.url)))
         btn_layout.addWidget(open_btn)
         
+        add_btn = QPushButton("➕ Add to Queue")
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #a6e3a1;
+                color: #1e1e2e;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #94e2d5;
+            }
+        """)
+        add_btn.clicked.connect(lambda: (self._add_id_to_queue(mod.workshop_id, mod.name), dialog.accept()))
+        btn_layout.addWidget(add_btn)
+        
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dialog.reject)
         btn_layout.addWidget(close_btn)
@@ -1856,6 +2034,12 @@ class WorkshopBrowser(QWidget):
         layout.addLayout(btn_layout)
         
         dialog.exec()
+    
+    def _copy_to_clipboard(self, text: str, message: str = "Copied!"):
+        """Copy text to clipboard and show status message."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self.status_label.setText(message)
     
     def _add_mod_to_queue(self, mod: WorkshopMod):
         """Add a mod to the download queue."""

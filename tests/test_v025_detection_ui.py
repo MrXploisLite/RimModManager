@@ -122,8 +122,8 @@ class TestFullscreenCodeExists(unittest.TestCase):
             content = f.read()
         
         self.assertIn("def _toggle_fullscreen", content)
-        self.assertIn("showFullScreen", content)
-        self.assertIn("showNormal", content)
+        self.assertIn("WindowFullScreen", content)
+        self.assertIn("setWindowState", content)
     
     def test_f11_shortcut_exists(self):
         """F11 shortcut should be set for fullscreen."""
