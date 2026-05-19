@@ -1,6 +1,7 @@
 """
 Workshop Browser for RimModManager
-Integrated Steam Workshop browser with subscription and download features.
+Scraper-based Workshop browser with mod cards - no WebEngine needed.
+Uses workshop_scraper.py to fetch and parse Steam Workshop data.
 """
 
 import re
@@ -13,38 +14,22 @@ from dataclasses import dataclass, field
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QProgressBar,
-    QSplitter, QGroupBox, QCheckBox, QTextEdit, QTextBrowser,
-    QApplication
+    QSplitter, QGroupBox, QCheckBox, QTextEdit,
+    QApplication, QScrollArea, QFrame, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QUrl, QThread
-from PyQt6.QtGui import QTextOption
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QUrl
+from PyQt6.QtGui import QPixmap, QDesktopServices
 from game_detector import PLATFORM
+from workshop_scraper import (
+    WorkshopMod, WorkshopPage, fetch_workshop_page, _get_opener
+)
 
 log = logging.getLogger("rimmodmanager.workshop_browser")
-
-# Try to import WebEngine, fallback gracefully if not available
-# LAZY IMPORT: Only import when actually needed to save memory
-HAS_WEBENGINE = False
-QWebEngineView = None
-
-def _ensure_webengine_imported():
-    """Lazy import WebEngine only when first accessed."""
-    global HAS_WEBENGINE, QWebEngineView
-    if QWebEngineView is not None or HAS_WEBENGINE:
-        return
-    try:
-        from PyQt6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
-        from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEngineProfile
-        QWebEngineView = _QWebEngineView
-        HAS_WEBENGINE = True
-    except ImportError:
-        HAS_WEBENGINE = False
-        QWebEngineView = None
 
 
 @dataclass
 class WorkshopItem:
-    """Represents a Workshop mod item."""
+    """Represents a Workshop mod item (alias for WorkshopMod for compatibility)."""
     workshop_id: str
     name: str = ""
     author: str = ""
@@ -70,10 +55,196 @@ class DownloadQueueItem(QListWidgetItem):
         self.setText(f"{icon} {name} - {status}")
 
 
+class ModCard(QFrame):
+    """A single mod card widget with thumbnail, info, and add button."""
+    
+    add_requested = pyqtSignal(str)  # workshop_id
+    
+    def __init__(self, mod: WorkshopMod, downloaded_ids: set[str] = None, parent=None):
+        super().__init__(parent)
+        self.mod = mod
+        self.downloaded_ids = downloaded_ids or set()
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            ModCard {
+                background-color: #1e1e2e;
+                border: 1px solid #45475a;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            ModCard:hover {
+                border-color: #89b4fa;
+                background-color: #252537;
+            }
+        """)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+        
+        # Thumbnail
+        self.thumb_label = QLabel()
+        self.thumb_label.setFixedSize(160, 90)
+        self.thumb_label.setStyleSheet("""
+            background-color: #313244;
+            border-radius: 4px;
+        """)
+        self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.thumb_label.setText("📦")
+        self.thumb_label.setStyleSheet("""
+            background-color: #313244;
+            border-radius: 4px;
+            color: #6c7086;
+            font-size: 24px;
+        """)
+        layout.addWidget(self.thumb_label, 0)
+        
+        # Info
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(4)
+        
+        # Title
+        title_label = QLabel(self.mod.name or f"Mod {self.mod.workshop_id}")
+        title_label.setStyleSheet("""
+            color: #cdd6f4;
+            font-size: 14px;
+            font-weight: bold;
+        """)
+        title_label.setWordWrap(True)
+        info_layout.addWidget(title_label)
+        
+        # Author
+        if self.mod.author:
+            author_label = QLabel(f"by {self.mod.author}")
+            author_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
+            info_layout.addWidget(author_label)
+        
+        # Description
+        if self.mod.description:
+            desc_label = QLabel(self.mod.description[:150])
+            desc_label.setStyleSheet("color: #6c7086; font-size: 11px;")
+            desc_label.setWordWrap(True)
+            info_layout.addWidget(desc_label)
+        
+        # Status badges
+        badges_layout = QHBoxLayout()
+        badges_layout.setSpacing(8)
+        
+        if self.mod.workshop_id in self.downloaded_ids:
+            badge = QLabel("✅ Downloaded")
+            badge.setStyleSheet("color: #a6e3a1; font-size: 11px; font-weight: bold;")
+            badges_layout.addWidget(badge)
+        
+        if self.mod.is_collection:
+            badge = QLabel("📁 Collection")
+            badge.setStyleSheet("color: #f9e2af; font-size: 11px;")
+            badges_layout.addWidget(badge)
+        
+        badges_layout.addStretch()
+        info_layout.addLayout(badges_layout)
+        
+        layout.addLayout(info_layout, 1)
+        
+        # Add button
+        self.btn_add = QPushButton("➕ Add")
+        self.btn_add.setFixedWidth(80)
+        self.btn_add.setStyleSheet("""
+            QPushButton {
+                background-color: #45475a;
+                color: #cdd6f4;
+                border: none;
+                border-radius: 4px;
+                padding: 6px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #89b4fa;
+                color: #1e1e2e;
+            }
+            QPushButton:disabled {
+                background-color: #313244;
+                color: #6c7086;
+            }
+        """)
+        
+        if self.mod.workshop_id in self.downloaded_ids:
+            self.btn_add.setText("✅ Added")
+            self.btn_add.setEnabled(False)
+        
+        self.btn_add.clicked.connect(lambda: self.add_requested.emit(self.mod.workshop_id))
+        layout.addWidget(self.btn_add, 0)
+    
+    def load_thumbnail(self):
+        """Load thumbnail image asynchronously."""
+        if not self.mod.thumbnail_url:
+            return
+        
+        class ThumbLoader(QThread):
+            finished = pyqtSignal(QPixmap)
+            
+            def __init__(self, url):
+                super().__init__()
+                self.url = url
+            
+            def run(self):
+                try:
+                    import urllib.request
+                    req = urllib.request.Request(self.url, headers={
+                        "User-Agent": "Mozilla/5.0"
+                    })
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = resp.read()
+                        pixmap = QPixmap()
+                        pixmap.loadFromData(data)
+                        self.finished.emit(pixmap)
+                except Exception:
+                    pass
+        
+        self._loader = ThumbLoader(self.mod.thumbnail_url)
+        self._loader.finished.connect(self._on_thumb_loaded)
+        self._loader.start()
+    
+    def _on_thumb_loaded(self, pixmap: QPixmap):
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
+                160, 90,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.thumb_label.setPixmap(scaled)
+            self.thumb_label.setText("")
+
+
+class WorkshopFetcherThread(QThread):
+    """Background thread to fetch workshop data."""
+    finished = pyqtSignal(object)  # WorkshopPage
+    error = pyqtSignal(str)
+    
+    def __init__(self, sort: str, page: int, search_text: str = ""):
+        super().__init__()
+        self.sort = sort
+        self.page = page
+        self.search_text = search_text
+    
+    def run(self):
+        try:
+            page = fetch_workshop_page(
+                sort=self.sort,
+                page=self.page,
+                search_text=self.search_text,
+            )
+            self.finished.emit(page)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class WorkshopBrowser(QWidget):
     """
     Integrated Steam Workshop browser widget.
-    Allows browsing, subscribing, and downloading mods directly.
+    Uses scraper-based approach (no WebEngine needed).
     """
     
     # Signals
@@ -88,23 +259,25 @@ class WorkshopBrowser(QWidget):
         self.downloaded_ids = downloaded_ids or set()
         self.queue: list[WorkshopItem] = []
         self.queue_ids: set[str] = set()
-        self._queue_lock = threading.Lock()  # Thread safety for queue operations
-        self._disable_webengine = disable_webengine  # User preference to disable WebEngine
+        self._queue_lock = threading.Lock()
+        self._disable_webengine = disable_webengine
+        
+        # Scraper state
+        self.current_sort = "toprated"
+        self.current_page = 1
+        self.current_search = ""
+        self.current_workshop_page: Optional[WorkshopPage] = None
+        self.mod_cards: list[ModCard] = []
+        self._fetcher_thread: Optional[WorkshopFetcherThread] = None
         
         self._setup_ui()
     
     def cleanup(self):
-        """Clean up resources to prevent memory leaks (especially WebEngine)."""
-        if hasattr(self, 'web_view') and self.web_view:
-            try:
-                self.web_view.setPage(None)
-                self.web_view.deleteLater()
-            except RuntimeError:
-                pass  # Widget already deleted
-            self.web_view = None
+        """Clean up resources."""
+        if self._fetcher_thread and self._fetcher_thread.isRunning():
+            self._fetcher_thread.wait()
     
     def closeEvent(self, event):
-        """Handle widget close - clean up WebEngine."""
         self.cleanup()
         super().closeEvent(event)
     
@@ -116,183 +289,111 @@ class WorkshopBrowser(QWidget):
         # Main splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left side - Browser or URL input
+        # Left side - Mod browser
         browser_widget = QWidget()
         browser_layout = QVBoxLayout(browser_widget)
         browser_layout.setContentsMargins(4, 4, 4, 4)
         
-        # Navigation toolbar
-        nav_bar = QHBoxLayout()
+        # Search bar
+        search_bar = QHBoxLayout()
         
         self.btn_back = QPushButton("←")
         self.btn_back.setFixedWidth(30)
-        self.btn_back.setToolTip("Go back")
-        nav_bar.addWidget(self.btn_back)
+        self.btn_back.setToolTip("Previous page")
+        self.btn_back.clicked.connect(self._prev_page)
+        search_bar.addWidget(self.btn_back)
         
         self.btn_forward = QPushButton("→")
         self.btn_forward.setFixedWidth(30)
-        self.btn_forward.setToolTip("Go forward")
-        nav_bar.addWidget(self.btn_forward)
+        self.btn_forward.setToolTip("Next page")
+        self.btn_forward.clicked.connect(self._next_page)
+        search_bar.addWidget(self.btn_forward)
         
         self.btn_refresh = QPushButton("🔄")
         self.btn_refresh.setFixedWidth(30)
         self.btn_refresh.setToolTip("Refresh")
-        nav_bar.addWidget(self.btn_refresh)
+        self.btn_refresh.clicked.connect(lambda: self._fetch_workshop())
+        search_bar.addWidget(self.btn_refresh)
         
         self.btn_home = QPushButton("🏠")
         self.btn_home.setFixedWidth(30)
         self.btn_home.setToolTip("Workshop home")
-        nav_bar.addWidget(self.btn_home)
+        self.btn_home.clicked.connect(lambda: self._open_in_browser(self.WORKSHOP_URL))
+        search_bar.addWidget(self.btn_home)
         
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Enter Workshop URL or Mod ID...")
-        nav_bar.addWidget(self.url_input, 1)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search Workshop mods...")
+        self.search_input.returnPressed.connect(self._do_search)
+        search_bar.addWidget(self.search_input, 1)
         
-        self.btn_add = QPushButton("➕ Add to Queue")
-        self.btn_add.clicked.connect(self._add_current_to_queue)
-        nav_bar.addWidget(self.btn_add)
+        self.btn_search = QPushButton("🔍")
+        self.btn_search.setFixedWidth(30)
+        self.btn_search.clicked.connect(self._do_search)
+        search_bar.addWidget(self.btn_search)
         
-        browser_layout.addLayout(nav_bar)
+        browser_layout.addLayout(search_bar)
         
-        # Lazy import WebEngine only if needed
-        _ensure_webengine_imported()
-        use_webengine = HAS_WEBENGINE and not self._disable_webengine
-        
-        if use_webengine:
-            from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEngineProfile
-            
-            self.web_view = QWebEngineView()
-            
-            # Performance optimizations
-            settings = self.web_view.settings()
-            settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, False)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, False)  # Disable WebGL for performance
-            settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, False)
-            settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, True)  # Don't autoplay
-            
-            # Set custom user agent to avoid Steam blocking
-            profile = self.web_view.page().profile()
-            profile.setHttpUserAgent(
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            )
-            
-            # Enable disk cache for faster loading
-            profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-            
-            self.web_view.setUrl(QUrl(self.WORKSHOP_URL))
-            browser_layout.addWidget(self.web_view, 1)
-            
-            # Loading indicator
-            self.loading_label = QLabel("⏳ Loading...")
-            self.loading_label.setStyleSheet("color: #888; padding: 4px;")
-            self.loading_label.hide()
-            browser_layout.addWidget(self.loading_label)
-            
-            # Connect loading signals
-            self.web_view.loadStarted.connect(lambda: self.loading_label.show())
-            self.web_view.loadFinished.connect(self._on_load_finished)
-            
-            # Connect navigation
-            self.btn_back.clicked.connect(self.web_view.back)
-            self.btn_forward.clicked.connect(self.web_view.forward)
-            self.btn_refresh.clicked.connect(self.web_view.reload)
-            self.btn_home.clicked.connect(lambda: self.web_view.setUrl(QUrl(self.WORKSHOP_URL)))
-            self.web_view.urlChanged.connect(self._on_url_changed)
-            self.url_input.returnPressed.connect(self._navigate_to_url)
-        else:
-            # Fallback - WebEngine not available or disabled by user
-            # Use QTextBrowser for rich HTML rendering without WebEngine overhead
-            self.web_view = None
-            
-            self.fallback_browser = QTextBrowser()
-            self.fallback_browser.setOpenExternalLinks(True)
-            self.fallback_browser.setWordWrapMode(QTextOption.WrapMode.WordWrap)
-            self.fallback_browser.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            if self._disable_webengine:
-                # User disabled WebEngine for performance
-                self.fallback_browser.setHtml(
-                    f"<div style='text-align: center; padding: 40px;'>"
-                    f"<h2>🚀 Lightweight Mode</h2>"
-                    f"<p>Embedded browser disabled for better performance.</p>"
-                    f"<p>Paste Workshop URLs or mod IDs in the input above, then click <b>Add to Queue</b>.</p>"
-                    f"<p>Or use <b>Ctrl+D</b> for Quick Download dialog.</p>"
-                    f"<p><a href='{self.WORKSHOP_URL}'>🌐 Open Workshop in System Browser</a></p>"
-                    f"<p style='color: #888; font-size: 11px;'>Re-enable in Settings → Performance</p>"
-                    f"</div>"
-                )
-            else:
-                # WebEngine not installed
-                if PLATFORM == 'windows':
-                    install_cmd = "pip install PyQt6-WebEngine"
-                elif PLATFORM == 'macos':
-                    install_cmd = "pip install PyQt6-WebEngine"
-                else:  # Linux
-                    install_cmd = "sudo pacman -S python-pyqt6-webengine  # Arch<br>sudo apt install python3-pyqt6.qtwebengine # Ubuntu/Debian"
-
-                self.fallback_browser.setHtml(
-                    f"<div style='text-align: center; padding: 40px;'>"
-                    f"<h2>🌐 Workshop Browser</h2>"
-                    f"<p>PyQt6-WebEngine is not installed.</p>"
-                    f"<p>Install with:<br><code style='background: #f0f0f0; padding: 4px 8px; border-radius: 3px;'>{install_cmd}</code></p>"
-                    f"<p>You can still paste Workshop URLs or mod IDs above and add them to the queue.</p>"
-                    f"<p><a href='{self.WORKSHOP_URL}'>🌐 Open Workshop in System Browser</a></p>"
-                    f"<p style='color: #888; font-size: 11px;'>Memory usage: ~50MB (vs ~150MB with WebEngine)</p>"
-                    f"</div>"
-                )
-            
-            browser_layout.addWidget(self.fallback_browser, 1)
-            
-            self.btn_back.setEnabled(False)
-            self.btn_forward.setEnabled(False)
-            self.btn_refresh.setEnabled(False)
-            self.btn_home.setEnabled(False)
-            self.url_input.returnPressed.connect(self._add_current_to_queue)
-        
-        # Quick links
-        links_layout = QHBoxLayout()
+        # Category buttons
+        cats_layout = QHBoxLayout()
         
         btn_popular = QPushButton("🔥 Most Popular")
-        btn_popular.clicked.connect(lambda: self._open_url(
-            "https://steamcommunity.com/workshop/browse/?appid=294100&browsesort=toprated"
-        ))
-        links_layout.addWidget(btn_popular)
+        btn_popular.clicked.connect(lambda: self._set_sort("toprated"))
+        cats_layout.addWidget(btn_popular)
         
         btn_recent = QPushButton("🆕 Most Recent")
-        btn_recent.clicked.connect(lambda: self._open_url(
-            "https://steamcommunity.com/workshop/browse/?appid=294100&browsesort=mostrecent"
-        ))
-        links_layout.addWidget(btn_recent)
+        btn_recent.clicked.connect(lambda: self._set_sort("mostrecent"))
+        cats_layout.addWidget(btn_recent)
         
         btn_trending = QPushButton("📈 Trending")
-        btn_trending.clicked.connect(lambda: self._open_url(
-            "https://steamcommunity.com/workshop/browse/?appid=294100&browsesort=trend"
-        ))
-        links_layout.addWidget(btn_trending)
+        btn_trending.clicked.connect(lambda: self._set_sort("trend"))
+        cats_layout.addWidget(btn_trending)
         
-        btn_collections = QPushButton("📁 Collections")
-        btn_collections.clicked.connect(lambda: self._open_url(
-            "https://steamcommunity.com/workshop/browse/?appid=294100&section=collections"
-        ))
-        links_layout.addWidget(btn_collections)
+        btn_open_steam = QPushButton("🌐 Open in Browser")
+        btn_open_steam.clicked.connect(lambda: self._open_in_browser(self.WORKSHOP_URL))
+        cats_layout.addWidget(btn_open_steam)
         
-        links_layout.addStretch()
-        browser_layout.addLayout(links_layout)
+        cats_layout.addStretch()
+        browser_layout.addLayout(cats_layout)
+        
+        # Page info
+        self.page_info_label = QLabel("Loading...")
+        self.page_info_label.setStyleSheet("color: #a6adc8; font-size: 12px; padding: 4px 0;")
+        browser_layout.addWidget(self.page_info_label)
+        
+        # Scrollable mod cards area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: #181825;
+            }
+        """)
+        
+        self.cards_container = QWidget()
+        self.cards_layout = QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.cards_layout.setSpacing(8)
+        self.cards_layout.addStretch()
+        
+        self.scroll_area.setWidget(self.cards_container)
+        browser_layout.addWidget(self.scroll_area, 1)
+        
+        # Loading indicator
+        self.loading_label = QLabel("⏳ Loading workshop data...")
+        self.loading_label.setStyleSheet("color: #89b4fa; font-size: 13px; padding: 20px;")
+        self.loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        browser_layout.addWidget(self.loading_label)
         
         splitter.addWidget(browser_widget)
         
-        # Right side - Queue
+        # Right side - Queue (same as before)
         queue_widget = QWidget()
         queue_widget.setMaximumWidth(350)
         queue_widget.setMinimumWidth(250)
         queue_layout = QVBoxLayout(queue_widget)
         queue_layout.setContentsMargins(4, 4, 4, 4)
         
-        # Queue header
         queue_header = QHBoxLayout()
         queue_header.addWidget(QLabel("📥 Download Queue"))
         queue_header.addStretch()
@@ -300,14 +401,11 @@ class WorkshopBrowser(QWidget):
         queue_header.addWidget(self.queue_count)
         queue_layout.addLayout(queue_header)
         
-        # Queue list
         self.queue_list = QListWidget()
         self.queue_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         queue_layout.addWidget(self.queue_list, 1)
         
-        # Queue controls
         queue_controls = QHBoxLayout()
-        
         self.btn_select_all = QPushButton("Select All")
         self.btn_select_all.clicked.connect(self._select_all_queue)
         queue_controls.addWidget(self.btn_select_all)
@@ -319,15 +417,12 @@ class WorkshopBrowser(QWidget):
         self.btn_clear = QPushButton("Clear All")
         self.btn_clear.clicked.connect(self._clear_queue)
         queue_controls.addWidget(self.btn_clear)
-        
         queue_layout.addLayout(queue_controls)
         
-        # Duplicate warning
         self.dup_check = QCheckBox("Skip already downloaded mods")
         self.dup_check.setChecked(True)
         queue_layout.addWidget(self.dup_check)
         
-        # Batch input
         batch_group = QGroupBox("Batch Add (IDs/URLs)")
         batch_layout = QVBoxLayout(batch_group)
         
@@ -344,17 +439,14 @@ class WorkshopBrowser(QWidget):
         self.btn_parse_collection = QPushButton("Parse Collection")
         self.btn_parse_collection.clicked.connect(self._parse_collection)
         batch_btns.addWidget(self.btn_parse_collection)
-        
         batch_layout.addLayout(batch_btns)
         queue_layout.addWidget(batch_group)
         
-        # Download button
         self.btn_download = QPushButton("⬇️ Download All")
         self.btn_download.setStyleSheet("background-color: #2a5a2a; font-weight: bold; padding: 8px;")
         self.btn_download.clicked.connect(self._start_download)
         queue_layout.addWidget(self.btn_download)
         
-        # Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         queue_layout.addWidget(self.progress_bar)
@@ -364,862 +456,237 @@ class WorkshopBrowser(QWidget):
         queue_layout.addWidget(self.status_label)
         
         splitter.addWidget(queue_widget)
-        
-        # Set splitter sizes
         splitter.setSizes([700, 300])
         
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, 1)
     
-    def _open_url(self, url: str):
-        """Navigate to a URL."""
-        if self.web_view:
-            self.web_view.setUrl(QUrl(url))
-        else:
-            import webbrowser
-            webbrowser.open(url)
+    def _set_sort(self, sort: str):
+        """Change sort order and reload."""
+        self.current_sort = sort
+        self.current_page = 1
+        self._fetch_workshop()
     
-    def _on_load_finished(self, ok: bool):
-        """Handle page load completion."""
+    def _do_search(self):
+        """Execute search."""
+        self.current_search = self.search_input.text().strip()
+        self.current_page = 1
+        self._fetch_workshop()
+    
+    def _prev_page(self):
+        """Go to previous page."""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._fetch_workshop()
+    
+    def _next_page(self):
+        """Go to next page."""
+        if self.current_workshop_page and self.current_workshop_page.has_next:
+            self.current_page += 1
+            self._fetch_workshop()
+    
+    def _fetch_workshop(self):
+        """Fetch workshop data in background thread."""
+        if self._fetcher_thread and self._fetcher_thread.isRunning():
+            return
+        
+        self.loading_label.show()
+        self.loading_label.setText("⏳ Loading workshop data...")
+        self.btn_refresh.setEnabled(False)
+        
+        self._fetcher_thread = WorkshopFetcherThread(
+            sort=self.current_sort,
+            page=self.current_page,
+            search_text=self.current_search,
+        )
+        self._fetcher_thread.finished.connect(self._on_fetch_finished)
+        self._fetcher_thread.error.connect(self._on_fetch_error)
+        self._fetcher_thread.start()
+    
+    def _on_fetch_finished(self, page: WorkshopPage):
+        """Handle fetched workshop data."""
         self.loading_label.hide()
-        if not ok:
-            self.status_label.setText("⚠️ Page failed to load - Steam may be having issues")
-    
-    def _on_url_changed(self, url: QUrl):
-        """Handle URL change in web view."""
-        self.url_input.setText(url.toString())
+        self.btn_refresh.setEnabled(True)
+        self.current_workshop_page = page
         
-        # Auto-detect if on a mod/collection page
-        url_str = url.toString()
-        if "filedetails" in url_str and "id=" in url_str:
-            # Both mods and collections use filedetails URL
-            # Button will auto-detect type when clicked
-            self.btn_add.setStyleSheet("background-color: #2a5a2a;")
-            self.btn_add.setText("➕ Add to Queue")
-        else:
-            self.btn_add.setStyleSheet("")
-            self.btn_add.setText("➕ Add to Queue")
-    
-    def _navigate_to_url(self):
-        """Navigate to URL from input."""
-        url = self.url_input.text().strip()
-        if not url:
-            return
+        # Clear existing cards
+        for card in self.mod_cards:
+            card.setParent(None)
+            card.deleteLater()
+        self.mod_cards.clear()
         
-        # Check if it's just an ID
-        if url.isdigit():
-            url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={url}"
-        elif not url.startswith("http"):
-            url = f"https://{url}"
-        
-        if self.web_view:
-            self.web_view.setUrl(QUrl(url))
-    
-    def _add_current_to_queue(self):
-        """Add current page/URL to download queue. Auto-detects collections."""
-        url = self.url_input.text().strip()
-        if not url:
-            return
-        
-        # Extract workshop ID first
-        workshop_id = self._extract_workshop_id(url)
-        if not workshop_id:
-            self.status_label.setText("Could not find mod ID in URL")
-            return
-        
-        # Check if this is a collection by fetching the page and checking content
-        # Collections and single mods both use filedetails/?id= URL pattern
-        if 'steamcommunity' in url and 'filedetails' in url:
-            self._detect_and_add_item(url, workshop_id)
-        else:
-            # Direct ID input - add as single mod
-            self._add_to_queue(workshop_id)
-            self.url_input.clear()
-    
-    def _detect_and_add_item(self, url: str, workshop_id: str):
-        """Detect if URL is a collection or single mod and add accordingly."""
-        import urllib.request
-        import urllib.error
-        
-        self.status_label.setText("Checking item type...")
-        QApplication.processEvents()
-        
-        try:
-            request = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
+        # Update page info
+        if page.total_results > 0:
+            self.page_info_label.setText(
+                f"📊 {page.showing_range} | Page {page.current_page} of {page.total_pages}"
             )
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                html = response.read().decode('utf-8', errors='replace')
-            
-            # Check for collection indicators in HTML
-            # Collections have: collectionChildren, collectionItemDetails, CollectionItems
-            is_collection = any(indicator in html for indicator in [
-                'collectionChildren',
-                'collectionItemDetails', 
-                'CollectionItems',
-                'workshopItemCollection',
-                'class="collectionItem'
-            ])
-            
-            if is_collection:
-                # Parse as collection
-                self._parse_collection_from_html(html, workshop_id)
-            else:
-                # Add as single mod
-                self._add_to_queue(workshop_id)
-                self.url_input.clear()
-                
-        except urllib.error.HTTPError as e:
-            self.status_label.setText(f"HTTP error: {e.code}")
-            # Fallback: add as single mod
-            self._add_to_queue(workshop_id)
-            self.url_input.clear()
-        except urllib.error.URLError as e:
-            reason = getattr(e, 'reason', str(e))
-            self.status_label.setText(f"Network error: {reason}")
-            # Fallback: add as single mod
-            self._add_to_queue(workshop_id)
-            self.url_input.clear()
-        except (OSError, ValueError, RuntimeError) as e:
-            self.status_label.setText(f"Error checking item: {e}")
-            # Fallback: add as single mod
-            self._add_to_queue(workshop_id)
-            self.url_input.clear()
-    
-    def _parse_collection_from_html(self, html: str, collection_id: str):
-        """Parse collection mods from already-fetched HTML."""
-        from PyQt6.QtWidgets import QProgressDialog
+        else:
+            self.page_info_label.setText("No results found")
         
-        # Create progress dialog
-        progress = QProgressDialog("Parsing collection...", "Cancel", 0, 0, self)
-        progress.setWindowTitle("Loading Collection")
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
+        # Update nav buttons
+        self.btn_back.setEnabled(page.has_prev)
+        self.btn_forward.setEnabled(page.has_next)
+        
+        # Create mod cards
+        for mod in page.mods:
+            card = ModCard(mod, self.downloaded_ids)
+            card.add_requested.connect(self._add_to_queue_from_card)
+            self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
+            self.mod_cards.append(card)
+            # Load thumbnails asynchronously
+            card.load_thumbnail()
+        
         QApplication.processEvents()
-        
-        try:
-            progress.setLabelText("Extracting mod IDs...")
-            QApplication.processEvents()
-            
-            # Try to extract ONLY collection items, not sidebar/related items
-            # Method 1: Look for collectionChildren div and extract IDs from within it
-            collection_ids = set()
-            
-            # Pattern for collection items specifically (most reliable)
-            # These patterns target the actual collection item containers
-            collection_patterns = [
-                # Collection item divs with sharedfile ID
-                r'class="collectionItem[^"]*"[^>]*id="sharedfile_(\d{7,12})"',
-                # Collection item links within collectionChildren
-                r'collectionItem[^>]*href="[^"]*\?id=(\d{7,12})"',
-                # Data attributes on collection items
-                r'class="collectionItem[^"]*"[^>]*data-publishedfileid="(\d{7,12})"',
-            ]
-            
-            for pattern in collection_patterns:
-                matches = re.findall(pattern, html, re.IGNORECASE)
-                collection_ids.update(matches)
-            
-            # If specific patterns didn't work, try to isolate the collection section
-            if not collection_ids:
-                # Try to find the collectionChildren section
-                collection_section_match = re.search(
-                    r'id="collectionChildren"[^>]*>(.*?)</div>\s*</div>\s*<div[^>]*class="[^"]*workshopBrowse',
-                    html, re.DOTALL | re.IGNORECASE
-                )
-                
-                if not collection_section_match:
-                    # Alternative: look for the items section
-                    collection_section_match = re.search(
-                        r'class="collectionChildren[^"]*"[^>]*>(.*?)<div[^>]*class="[^"]*workshopBrowse',
-                        html, re.DOTALL | re.IGNORECASE
-                    )
-                
-                if collection_section_match:
-                    section_html = collection_section_match.group(1)
-                    # Extract IDs only from this section
-                    section_patterns = [
-                        r'sharedfiles/filedetails/\?id=(\d{7,12})',
-                        r'data-publishedfileid=["\']?(\d{7,12})["\']?',
-                        r'id="sharedfile_(\d{7,12})"',
-                    ]
-                    for pattern in section_patterns:
-                        matches = re.findall(pattern, section_html)
-                        collection_ids.update(matches)
-            
-            # Fallback: Use Steam API to get collection items (most accurate)
-            if not collection_ids or len(collection_ids) < 5:
-                progress.setLabelText("Using Steam API to fetch collection items...")
-                QApplication.processEvents()
-                api_ids = self._fetch_collection_items_from_api(collection_id)
-                if api_ids:
-                    collection_ids = set(api_ids)
-            
-            # Last resort: broad pattern but exclude known non-collection sections
-            if not collection_ids:
-                # Get all IDs but try to filter out sidebar items
-                all_ids = set()
-                broad_patterns = [
-                    r'sharedfiles/filedetails/\?id=(\d{7,12})',
-                    r'data-publishedfileid=["\']?(\d{7,12})["\']?',
-                ]
-                for pattern in broad_patterns:
-                    matches = re.findall(pattern, html)
-                    all_ids.update(matches)
-                
-                # Remove IDs that appear in "related" or "popular" sections
-                # These sections usually have specific class names
-                sidebar_section = re.search(
-                    r'class="[^"]*rightcol[^"]*"[^>]*>(.*?)$',
-                    html, re.DOTALL | re.IGNORECASE
-                )
-                sidebar_ids = set()
-                if sidebar_section:
-                    for pattern in broad_patterns:
-                        matches = re.findall(pattern, sidebar_section.group(1))
-                        sidebar_ids.update(matches)
-                
-                collection_ids = all_ids - sidebar_ids
-            
-            # Exclude collection's own ID
-            unique_ids = []
-            for mid in collection_ids:
-                if mid != collection_id and mid not in self.queue_ids:
-                    if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
-                        unique_ids.append(mid)
-            
-            if not unique_ids:
-                progress.close()
-                self.status_label.setText("No new mods found in collection")
-                return
-            
-            if progress.wasCanceled():
-                return
-            
-            progress.setLabelText(f"Fetching names for {len(unique_ids)} mods...")
-            progress.setMaximum(len(unique_ids))
-            progress.setValue(0)
-            QApplication.processEvents()
-            
-            # Batch fetch mod names
-            mod_names = self._fetch_mod_names_batch(unique_ids)
-            
-            if progress.wasCanceled():
-                return
-            
-            progress.setLabelText("Adding mods to queue...")
-            QApplication.processEvents()
-            
-            added = 0
-            for i, wid in enumerate(unique_ids):
-                if progress.wasCanceled():
+    
+    def _on_fetch_error(self, error: str):
+        """Handle fetch error."""
+        self.loading_label.setText(f"❌ Error: {error}")
+        self.loading_label.setStyleSheet("color: #f38ba8; font-size: 13px; padding: 20px;")
+        self.btn_refresh.setEnabled(True)
+    
+    def _add_to_queue_from_card(self, workshop_id: str):
+        """Add a mod to queue from card button."""
+        # Find the mod data
+        if self.current_workshop_page:
+            for mod in self.current_workshop_page.mods:
+                if mod.workshop_id == workshop_id:
+                    self._add_mod_to_queue(mod)
                     break
-                name = mod_names.get(wid, f"Workshop Mod {wid}")
-                if self._add_to_queue_direct(wid, name):
-                    added += 1
-                progress.setValue(i + 1)
-                QApplication.processEvents()
-            
-            progress.close()
-            self.url_input.clear()
-            self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
-            
-        except (OSError, ValueError, RuntimeError) as e:
-            progress.close()
-            self.status_label.setText(f"Failed to parse collection: {e}")
     
-    def _fetch_collection_items_from_api(self, collection_id: str) -> list[str]:
-        """Fetch collection items using Steam API (most accurate method)."""
-        import urllib.request
-        import urllib.parse
-        import json
-        
-        try:
-            # Steam API endpoint for collection details
-            url = "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/"
-            data = {
-                "collectioncount": 1,
-                "publishedfileids[0]": collection_id
-            }
-            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-            
-            request = urllib.request.Request(url, data=encoded_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-            
-            if 'response' in result and 'collectiondetails' in result['response']:
-                details = result['response']['collectiondetails']
-                if details and len(details) > 0:
-                    collection = details[0]
-                    if 'children' in collection:
-                        return [str(item['publishedfileid']) for item in collection['children']]
-        except (OSError, ValueError, RuntimeError) as e:
-            # API failed, caller will fall back to HTML parsing.
-            log.debug(f"Collection API fetch failed for {collection_id}: {e}")
-        
-        return []
-    
-    def _extract_workshop_id(self, url: str) -> Optional[str]:
-        """Extract workshop ID from URL or direct input with validation."""
-        patterns = [
-            r'steamcommunity\.com/sharedfiles/filedetails/\?id=(\d+)',
-            r'steamcommunity\.com/workshop/filedetails/\?id=(\d+)',
-            r'\?id=(\d+)',
-            r'^(\d{7,12})$',  # Workshop IDs can be 7-12 digits
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                workshop_id = match.group(1)
-                # Validate: must be numeric and reasonable range
-                if workshop_id.isdigit() and 1000000 <= int(workshop_id) <= 999999999999:
-                    return workshop_id
-        
-        return None
-    
-    def _add_to_queue(self, workshop_id: str, name: str = ""):
-        """Add a mod to the download queue (thread-safe)."""
+    def _add_mod_to_queue(self, mod: WorkshopMod):
+        """Add a mod to the download queue."""
         with self._queue_lock:
-            # Check for duplicates
-            if workshop_id in self.queue_ids:
-                self.status_label.setText(f"Mod {workshop_id} already in queue")
-                return False
-            
-            # Check if already downloaded
-            if self.dup_check.isChecked() and workshop_id in self.downloaded_ids:
-                self.status_label.setText(f"Mod {workshop_id} already downloaded (skipped)")
-                return False
-            
-            # Fetch mod name from Steam API if not provided
-            if not name or name == f"Workshop Mod {workshop_id}":
-                name = self._fetch_mod_name(workshop_id) or f"Workshop Mod {workshop_id}"
+            if mod.workshop_id in self.queue_ids:
+                return
             
             item = WorkshopItem(
-                workshop_id=workshop_id,
-                name=name
+                workshop_id=mod.workshop_id,
+                name=mod.name,
+                author=mod.author,
+                description=mod.description,
+                thumbnail_url=mod.thumbnail_url,
+                is_collection=mod.is_collection,
             )
+            self.queue.append(item)
+            self.queue_ids.add(mod.workshop_id)
             
+            queue_item = DownloadQueueItem(item)
+            self.queue_list.addItem(queue_item)
+            self.queue_count.setText(f"({len(self.queue)})")
+            
+            self.mod_added.emit(mod.workshop_id, mod.name)
+    
+    def _open_in_browser(self, url: str):
+        """Open URL in system browser."""
+        QDesktopServices.openUrl(QUrl(url))
+    
+    def _open_url(self, url: str):
+        """Open URL - for compatibility with old interface."""
+        # Try to extract workshop ID and add to queue
+        match = re.search(r'id=(\d+)', url)
+        if match:
+            workshop_id = match.group(1)
+            self._add_id_to_queue(workshop_id)
+        else:
+            self._open_in_browser(url)
+    
+    def _add_id_to_queue(self, workshop_id: str):
+        """Add a workshop ID to queue."""
+        with self._queue_lock:
+            if workshop_id in self.queue_ids:
+                return
+            
+            item = WorkshopItem(workshop_id=workshop_id)
             self.queue.append(item)
             self.queue_ids.add(workshop_id)
             
-            list_item = DownloadQueueItem(item)
-            self.queue_list.addItem(list_item)
-            
-            self._update_queue_count()
-            self.status_label.setText(f"Added: {name}")
-            self.mod_added.emit(workshop_id, name)
-            
-            return True
+            queue_item = DownloadQueueItem(item)
+            self.queue_list.addItem(queue_item)
+            self.queue_count.setText(f"({len(self.queue)})")
     
-    def _fetch_mod_name(self, workshop_id: str) -> Optional[str]:
-        """Fetch mod name from Steam Workshop API."""
-        import urllib.request
-        import urllib.parse
-        import json
-        
-        try:
-            url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
-            data = {
-                "itemcount": 1,
-                "publishedfileids[0]": workshop_id
-            }
-            encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-            
-            request = urllib.request.Request(url, data=encoded_data, method='POST')
-            request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-            
-            with urllib.request.urlopen(request, timeout=20) as response:
-                result = json.loads(response.read().decode('utf-8'))
-            
-            if 'response' in result and 'publishedfiledetails' in result['response']:
-                details = result['response']['publishedfiledetails']
-                if details and details[0].get('title'):
-                    return details[0]['title']
-        except (OSError, ValueError, RuntimeError) as e:
-            log.debug(f"Failed to fetch workshop title for {workshop_id}: {e}")
-        
-        return None
-    
-    def _add_batch(self):
-        """Add multiple mods from batch input."""
-        text = self.batch_input.toPlainText()
-        lines = text.strip().split('\n')
-        
-        # Extract all workshop IDs first
-        workshop_ids = []
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            workshop_id = self._extract_workshop_id(line)
-            if workshop_id and workshop_id not in self.queue_ids:
-                if not (self.dup_check.isChecked() and workshop_id in self.downloaded_ids):
-                    workshop_ids.append(workshop_id)
-        
-        if not workshop_ids:
-            self.status_label.setText("No new mods to add")
+    def _add_current_to_queue(self):
+        """Add current URL/ID to queue (compatibility method)."""
+        text = self.search_input.text().strip() if hasattr(self, 'search_input') else ""
+        if not text:
             return
         
-        self.status_label.setText(f"Fetching names for {len(workshop_ids)} mods...")
-        QApplication.processEvents()
-        
-        # Batch fetch mod names
-        mod_names = self._fetch_mod_names_batch(workshop_ids)
-        
-        added = 0
-        for wid in workshop_ids:
-            name = mod_names.get(wid, f"Workshop Mod {wid}")
-            if self._add_to_queue_direct(wid, name):
-                added += 1
-        
-        self.batch_input.clear()
-        self.status_label.setText(f"Added {added} mod(s) to queue")
+        # Check if it's a URL
+        match = re.search(r'id=(\d+)', text)
+        if match:
+            self._add_id_to_queue(match.group(1))
+        elif text.isdigit():
+            self._add_id_to_queue(text)
     
-    def _add_to_queue_direct(self, workshop_id: str, name: str) -> bool:
-        """Add to queue without fetching name (used by batch add)."""
-        if workshop_id in self.queue_ids:
-            return False
-        if self.dup_check.isChecked() and workshop_id in self.downloaded_ids:
-            return False
-        
-        item = WorkshopItem(workshop_id=workshop_id, name=name)
-        self.queue.append(item)
-        self.queue_ids.add(workshop_id)
-        
-        list_item = DownloadQueueItem(item)
-        self.queue_list.addItem(list_item)
-        
-        self._update_queue_count()
-        self.mod_added.emit(workshop_id, name)
-        return True
+    def _on_url_changed(self, url):
+        """Handle URL change (compatibility)."""
+        pass
     
-    def _fetch_mod_names_batch(self, workshop_ids: list[str]) -> dict[str, str]:
-        """Fetch mod names for multiple IDs in one API call with retry logic."""
-        import urllib.request
-        import urllib.parse
-        import json
-        import time
-        
-        names = {}
-        max_retries = 2
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                url = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
-                data = {"itemcount": len(workshop_ids)}
-                for i, wid in enumerate(workshop_ids):
-                    data[f"publishedfileids[{i}]"] = wid
-                
-                encoded_data = urllib.parse.urlencode(data).encode('utf-8')
-                
-                request = urllib.request.Request(url, data=encoded_data, method='POST')
-                request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-                
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    result = json.loads(response.read().decode('utf-8'))
-                
-                if 'response' in result and 'publishedfiledetails' in result['response']:
-                    for item in result['response']['publishedfiledetails']:
-                        wid = item.get('publishedfileid', '')
-                        title = item.get('title', '')
-                        if wid and title:
-                            names[wid] = title
-                
-                return names
-                
-            except urllib.error.HTTPError as e:
-                log.debug(f"HTTP error fetching names (attempt {attempt}): {e.code}")
-            except urllib.error.URLError as e:
-                log.debug(f"Network error fetching names (attempt {attempt}): {e.reason}")
-            except (json.JSONDecodeError, OSError, ValueError) as e:
-                log.debug(f"Error fetching names (attempt {attempt}): {e}")
-            
-            if attempt < max_retries:
-                time.sleep(2)
-        
-        log.debug(f"Batch workshop title fetch failed after {max_retries} attempts")
-        return names
+    def _navigate_to_url(self):
+        """Navigate to URL (compatibility)."""
+        self._add_current_to_queue()
     
-    def _parse_collection_async(self):
-        """Parse collection with progress dialog (non-blocking UI)."""
-        from PyQt6.QtWidgets import QProgressDialog
-        
-        url = self.url_input.text().strip()
-        if not url:
-            url = self.batch_input.toPlainText().strip()
-        
-        if not url:
-            self.status_label.setText("Please enter a collection URL")
-            return
-        
-        # Ensure URL is complete
-        collection_id = self._extract_workshop_id(url)
-        if collection_id and not url.startswith('http'):
-            url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={collection_id}"
-        
-        if not collection_id:
-            self.status_label.setText("Could not extract collection ID from URL")
-            return
-        
-        # Create progress dialog
-        progress = QProgressDialog("Parsing collection...", "Cancel", 0, 0, self)
-        progress.setWindowTitle("Loading Collection")
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
-        
-        try:
-            import urllib.request
-            import urllib.error
-            
-            # First try Steam API (most accurate)
-            progress.setLabelText("Fetching collection items from Steam API...")
-            QApplication.processEvents()
-            
-            collection_ids = self._fetch_collection_items_from_api(collection_id)
-            
-            if progress.wasCanceled():
-                return
-            
-            # If API failed, fall back to HTML parsing
-            if not collection_ids:
-                progress.setLabelText("API failed, fetching page...")
-                QApplication.processEvents()
-                
-                request = urllib.request.Request(
-                    url,
-                    headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
-                )
-                
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    html = response.read().decode('utf-8', errors='replace')
-                
-                if progress.wasCanceled():
-                    return
-                
-                # Check if this is actually a collection
-                is_collection = any(indicator in html for indicator in [
-                    'collectionChildren',
-                    'collectionItemDetails', 
-                    'CollectionItems',
-                    'workshopItemCollection',
-                    'class="collectionItem'
-                ])
-                
-                if not is_collection:
-                    progress.close()
-                    self.status_label.setText("This doesn't appear to be a collection. Use 'Add to Queue' for single mods.")
-                    return
-                
-                progress.setLabelText("Extracting mod IDs from HTML...")
-                QApplication.processEvents()
-                
-                # Use more targeted patterns for collection items
-                collection_patterns = [
-                    r'class="collectionItem[^"]*"[^>]*id="sharedfile_(\d{7,12})"',
-                    r'collectionItem[^>]*href="[^"]*\?id=(\d{7,12})"',
-                    r'class="collectionItem[^"]*"[^>]*data-publishedfileid="(\d{7,12})"',
-                ]
-                
-                for pattern in collection_patterns:
-                    matches = re.findall(pattern, html, re.IGNORECASE)
-                    collection_ids.extend(matches)
-                
-                # Dedupe with deterministic order
-                collection_ids = sorted(set(collection_ids), key=int)
-            
-            # Exclude collection's own ID and already queued/downloaded
-            unique_ids = []
-            for mid in sorted(collection_ids, key=int):
-                if mid != collection_id and mid not in self.queue_ids:
-                    if not (self.dup_check.isChecked() and mid in self.downloaded_ids):
-                        unique_ids.append(mid)
-            
-            if not unique_ids:
-                progress.close()
-                self.status_label.setText("No new mods found in collection")
-                return
-            
-            if progress.wasCanceled():
-                return
-            
-            progress.setLabelText(f"Fetching names for {len(unique_ids)} mods...")
-            progress.setMaximum(len(unique_ids))
-            progress.setValue(0)
-            QApplication.processEvents()
-            
-            # Batch fetch mod names
-            mod_names = self._fetch_mod_names_batch(unique_ids)
-            
-            if progress.wasCanceled():
-                return
-            
-            progress.setLabelText("Adding mods to queue...")
-            QApplication.processEvents()
-            
-            added = 0
-            for i, wid in enumerate(unique_ids):
-                if progress.wasCanceled():
-                    break
-                name = mod_names.get(wid, f"Workshop Mod {wid}")
-                if self._add_to_queue_direct(wid, name):
-                    added += 1
-                progress.setValue(i + 1)
-                QApplication.processEvents()
-            
-            progress.close()
-            self.url_input.clear()  # Clear URL input after successful parse
-            self.status_label.setText(f"Added {added} mods from collection ({len(unique_ids)} found)")
-            
-        except urllib.error.HTTPError as e:
-            progress.close()
-            self.status_label.setText(f"HTTP error: {e.code}")
-        except urllib.error.URLError as e:
-            progress.close()
-            reason = getattr(e, 'reason', str(e))
-            self.status_label.setText(f"Network error: {reason}")
-        except (OSError, ValueError, RuntimeError) as e:
-            progress.close()
-            self.status_label.setText(f"Failed to parse collection: {e}")
-    
-    def _parse_collection(self):
-        """Parse a Steam collection page for mod IDs (calls async version)."""
-        self._parse_collection_async()
-    
+    # Queue management methods
     def _select_all_queue(self):
-        """Select all items in the queue."""
         self.queue_list.selectAll()
-        count = len(self.queue_list.selectedItems())
-        self.status_label.setText(f"Selected {count} item(s)")
     
     def _remove_selected(self):
-        """Remove selected items from queue (thread-safe)."""
-        with self._queue_lock:
-            selected = self.queue_list.selectedItems()
-            if not selected:
-                self.status_label.setText("No items selected")
-                return
-            
-            # Get rows in reverse order to avoid index shifting
-            rows_to_remove = sorted(
-                [self.queue_list.row(item) for item in selected],
-                reverse=True
-            )
-            
-            for row in rows_to_remove:
-                item = self.queue_list.item(row)
-                if isinstance(item, DownloadQueueItem):
-                    wid = item.workshop_item.workshop_id
+        for item in self.queue_list.selectedItems():
+            if hasattr(item, 'workshop_item'):
+                wid = item.workshop_item.workshop_id
+                with self._queue_lock:
                     self.queue_ids.discard(wid)
                     self.queue = [q for q in self.queue if q.workshop_id != wid]
-                self.queue_list.takeItem(row)
-            
-            self._update_queue_count()
-            self.status_label.setText(f"Removed {len(rows_to_remove)} item(s)")
+            row = self.queue_list.row(item)
+            self.queue_list.takeItem(row)
+        self.queue_count.setText(f"({self.queue_list.count()})")
     
     def _clear_queue(self):
-        """Clear the entire queue (thread-safe)."""
+        self.queue_list.clear()
         with self._queue_lock:
             self.queue.clear()
             self.queue_ids.clear()
-            self.queue_list.clear()
-            self._update_queue_count()
-            self.status_label.setText("Queue cleared")
+        self.queue_count.setText("(0)")
     
-    def _update_queue_count(self):
-        """Update the queue count display."""
-        count = len(self.queue)
-        self.queue_count.setText(f"({count})")
-        self.btn_download.setEnabled(count > 0)
-        self.btn_download.setText(f"⬇️ Download All ({count})")
+    def _add_batch(self):
+        """Add multiple IDs/URLs from batch input."""
+        text = self.batch_input.toPlainText().strip()
+        if not text:
+            return
+        
+        ids = set()
+        for line in text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            match = re.search(r'id=(\d+)', line)
+            if match:
+                ids.add(match.group(1))
+            elif line.isdigit():
+                ids.add(line)
+        
+        added = 0
+        for wid in ids:
+            if wid not in self.queue_ids:
+                self._add_id_to_queue(wid)
+                added += 1
+        
+        self.status_label.setText(f"Added {added} mods to queue")
+        self.batch_input.clear()
+    
+    def _parse_collection(self):
+        """Parse a collection URL and add all items."""
+        text = self.batch_input.toPlainText().strip()
+        match = re.search(r'id=(\d+)', text)
+        if match:
+            self._add_id_to_queue(match.group(1))
+            self.status_label.setText("Collection added to queue (items will be resolved during download)")
     
     def _start_download(self):
         """Start downloading all queued mods."""
-        if not self.queue:
-            return
-        
-        workshop_ids = [item.workshop_id for item in self.queue]
-        self.download_requested.emit(workshop_ids)
-    
-    def set_downloaded_ids(self, ids: set[str]):
-        """Update the set of already-downloaded mod IDs."""
-        self.downloaded_ids = ids
-    
-    def refresh_downloaded_ids(self, workshop_path: Path):
-        """Refresh downloaded IDs from disk."""
-        self.downloaded_ids.clear()
-        if workshop_path.exists():
-            for item in workshop_path.iterdir():
-                if item.is_dir() and item.name.isdigit():
-                    self.downloaded_ids.add(item.name)
-    
-    def mark_downloaded(self, workshop_id: str):
-        """Mark a mod as downloaded."""
-        self.downloaded_ids.add(workshop_id)
-        
-        # Update queue display
-        for i in range(self.queue_list.count()):
-            item = self.queue_list.item(i)
-            if isinstance(item, DownloadQueueItem):
-                if item.workshop_item.workshop_id == workshop_id:
-                    item.update_display("✓ Downloaded")
-    
-    def clear_completed(self):
-        """Remove all completed/downloaded items from queue (thread-safe)."""
         with self._queue_lock:
-            # Build list of indices to remove
-            items_to_remove = []
-            for i in range(self.queue_list.count()):
-                item = self.queue_list.item(i)
-                if isinstance(item, DownloadQueueItem):
-                    wid = item.workshop_item.workshop_id
-                    if wid in self.downloaded_ids:
-                        items_to_remove.append((i, wid))
-            
-            # Remove in reverse order to avoid index shifting
-            for i, wid in reversed(items_to_remove):
-                self.queue_ids.discard(wid)
-                self.queue = [q for q in self.queue if q.workshop_id != wid]
-                self.queue_list.takeItem(i)
-            
-            self._update_queue_count()
-            if items_to_remove:
-                self.status_label.setText(f"Cleared {len(items_to_remove)} downloaded item(s)")
-    
-    def show_progress(self, current: int, total: int, status: str = ""):
-        """Show download progress."""
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(current)
-        if status:
-            self.status_label.setText(status)
-    
-    def hide_progress(self):
-        """Hide progress bar."""
-        self.progress_bar.setVisible(False)
-    
-    def get_queue_ids(self) -> list[str]:
-        """Get list of workshop IDs in queue."""
-        return [item.workshop_id for item in self.queue]
-
-
-class WorkshopDownloadDialog(QWidget):
-    """
-    Standalone dialog/widget for Workshop downloads.
-    Can be used as a tab or separate window.
-    """
-    
-    download_complete = pyqtSignal()
-    
-    def __init__(self, downloader, downloaded_ids: set[str] = None, parent=None):
-        super().__init__(parent)
-        self.downloader = downloader
+            ids = [item.workshop_id for item in self.queue]
         
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Check steamcmd availability
-        if not downloader.is_steamcmd_available():
-            warning = QLabel(
-                "<h3>⚠️ SteamCMD Not Found</h3>"
-                f"<pre>{downloader.get_install_instructions()}</pre>"
-            )
-            warning.setWordWrap(True)
-            layout.addWidget(warning)
+        if not ids:
+            self.status_label.setText("Queue is empty!")
             return
         
-        # Workshop browser
-        self.browser = WorkshopBrowser(downloaded_ids, self)
-        self.browser.download_requested.connect(self._start_downloads)
-        layout.addWidget(self.browser)
-    
-    def _start_downloads(self, workshop_ids: list[str]):
-        """Start downloading mods."""
-        if not workshop_ids:
-            return
-        
-        self.browser.show_progress(0, len(workshop_ids), "Starting downloads...")
-        
-        # Cancel any existing download thread
-        if hasattr(self, '_download_thread') and self._download_thread and self._download_thread.isRunning():
-            self._download_thread.cancel()
-            self._download_thread.wait(500)
-        
-        # Download in thread
-        self._download_thread = DownloadThread(self.downloader, workshop_ids)
-        self._download_thread.progress.connect(self._on_progress)
-        self._download_thread.finished.connect(self._on_finished)
-        self._download_thread.finished.connect(self._cleanup_download_thread)  # Memory leak fix
-        self._download_thread.start()
-    
-    def _cleanup_download_thread(self):
-        """Clean up finished download thread to prevent memory leak."""
-        if hasattr(self, '_download_thread') and self._download_thread:
-            self._download_thread.deleteLater()
-            self._download_thread = None
-    
-    def _on_progress(self, current: int, total: int, workshop_id: str, status: str):
-        """Handle download progress."""
-        self.browser.show_progress(current, total, f"{status}: {workshop_id}")
-        if status == "Complete":
-            self.browser.mark_downloaded(workshop_id)
-    
-    def _on_finished(self, success: int, failed: int):
-        """Handle download completion."""
-        self.browser.hide_progress()
-        self.browser.status_label.setText(f"Downloaded {success} mod(s), {failed} failed")
-        self.download_complete.emit()
-
-
-class DownloadThread(QThread):
-    """Background thread for downloading mods."""
-    
-    progress = pyqtSignal(int, int, str, str)  # current, total, workshop_id, status
-    finished = pyqtSignal(int, int)  # success, failed
-    
-    def __init__(self, downloader, workshop_ids: list[str]):
-        super().__init__()
-        self.downloader = downloader
-        self.workshop_ids = workshop_ids
-        self._cancelled = False
-    
-    def cancel(self):
-        """Cancel the download."""
-        self._cancelled = True
-        if self.downloader:
-            self.downloader.cancel_downloads()
-    
-    def run(self):
-        success = 0
-        failed = 0
-        total = len(self.workshop_ids)
-        
-        try:
-            for i, wid in enumerate(self.workshop_ids):
-                if self._cancelled:
-                    break
-                    
-                self.progress.emit(i, total, wid, "Downloading")
-                
-                result = self.downloader.download_single(wid)
-                
-                if self._cancelled:
-                    break
-                
-                if result:
-                    success += 1
-                    self.progress.emit(i + 1, total, wid, "Complete")
-                else:
-                    failed += 1
-                    self.progress.emit(i + 1, total, wid, "Failed")
-        except (OSError, IOError) as e:
-            failed += 1
-            self.progress.emit(total, total, "error", f"Error: {e}")
-        finally:
-            self.finished.emit(success, failed)
+        self.download_requested.emit(ids)

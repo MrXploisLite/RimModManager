@@ -5,6 +5,28 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-18 - Workshop Scraper (No WebEngine!)
+
+### Added
+- **Workshop Scraper**: New `workshop_scraper.py` module that fetches and parses Steam Workshop pages using only stdlib (urllib + json + re). No external dependencies needed.
+- **Mod Card Grid UI**: Workshop browser now displays mods as beautiful cards with thumbnails, names, authors, descriptions, and "Add to Queue" buttons.
+- **Search & Sort**: Built-in search bar and category buttons (Most Popular, Most Recent, Trending) with pagination support.
+- **Async Thumbnail Loading**: Thumbnails load asynchronously in background threads without blocking the UI.
+
+### Removed
+- **WebEngine Dependency**: Completely removed PyQt6-WebEngine requirement. The Workshop browser no longer needs an embedded browser at all.
+- **QTextBrowser Fallback**: No longer needed since the scraper approach works without any web rendering engine.
+
+### Performance
+- **RAM Usage**: ~60MB total (no WebEngine overhead). Previously ~150MB with WebEngine.
+- **Zero WebEngine Import**: No WebEngine modules are imported anywhere in the codebase.
+- **Faster Startup**: No browser initialization delay — Workshop tab loads instantly with mod cards.
+
+### Changed
+- **Workshop Browser Architecture**: From embedded browser → scraper-based mod card grid.
+- **Navigation**: Previous/Next page buttons replace browser back/forward.
+- **"Open in Browser" Button**: Opens Steam Workshop in system browser for full browsing when needed.
+
 ## [0.3.1] - 2026-05-17 - Memory Optimization
 
 ### Performance

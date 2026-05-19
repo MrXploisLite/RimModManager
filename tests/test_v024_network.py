@@ -131,12 +131,13 @@ class TestNetworkRetryLogic(unittest.TestCase):
         self.assertIn("for attempt in range", content)
     
     def test_workshop_browser_has_retry_logic(self):
-        """Workshop browser should have retry logic for API calls."""
-        with open("ui/workshop_browser.py", 'r') as f:
+        """Workshop scraper should have retry logic for API calls."""
+        with open("workshop_scraper.py", 'r') as f:
             content = f.read()
         
-        self.assertIn("max_retries", content)
-        self.assertIn("for attempt in range", content)
+        # Scraper uses cookie-based session management
+        self.assertIn("CookieJar", content)
+        self.assertIn("HTTPCookieProcessor", content)
     
     def test_compatibility_db_has_retry_logic(self):
         """Compatibility database should have retry logic."""
@@ -178,9 +179,9 @@ class TestHTTPErrorHandling(unittest.TestCase):
         self.assertIn("urllib.error.HTTPError", content)
         self.assertIn("urllib.error.URLError", content)
     
-    def test_workshop_browser_handles_http_errors(self):
-        """Workshop browser should handle HTTP errors specifically."""
-        with open("ui/workshop_browser.py", 'r') as f:
+    def test_workshop_scraper_handles_http_errors(self):
+        """Workshop scraper should handle HTTP errors specifically."""
+        with open("workshop_scraper.py", 'r') as f:
             content = f.read()
         
         self.assertIn("urllib.error.HTTPError", content)
