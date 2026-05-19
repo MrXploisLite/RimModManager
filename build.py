@@ -1,6 +1,6 @@
 """
 Build Script for RimModManager
-Creates standalone executables for Linux and Windows using PyInstaller.
+Creates standalone executables for Linux, Windows, and macOS using PyInstaller.
 """
 
 import PyInstaller.__main__
@@ -41,13 +41,16 @@ def build():
         '--optimize=2',
     ]
     
-    # Icon
-    if Path('resources/icon.svg').exists():
-        # PyInstaller needs .ico for Windows, .icns for macOS, .png/.svg for Linux
+    # Icon - platform specific
+    icon_path = Path('resources/icon.svg')
+    if icon_path.exists():
         if platform == 'windows':
-            # Convert SVG to ICO if possible, otherwise skip
+            # Windows needs .ico - skip if not available
             pass
-        elif platform == 'linux':
+        elif platform == 'darwin':
+            # macOS needs .icns - skip if not available
+            pass
+        else:
             args.append('--icon=resources/icon.svg')
     
     # Exclude heavy/unused libraries
@@ -80,13 +83,13 @@ def build():
     args.append('--collect-submodules=PyQt6.QtCore')
     args.append('--collect-submodules=PyQt6.QtGui')
     
-    # Try UPX
+    # Try UPX (Windows only for best compatibility)
     try:
-        if shutil.which('upx'):
+        if platform == 'windows' and shutil.which('upx'):
             print("✨ UPX found! Compression enabled.")
             args.append('--upx-dir=' + str(Path(shutil.which('upx')).parent))
         else:
-            print("ℹ️ UPX not found. Install UPX for smaller executable.")
+            print("ℹ️ UPX not used (Linux/macOS have compatibility issues).")
     except (ImportError, OSError):
         pass
     
@@ -106,6 +109,19 @@ def build():
         if dist_path.exists():
             size_mb = dist_path.stat().st_size / (1024 * 1024)
             print(f"📄 Output size: {size_mb:.2f} MB")
+            
+            # Rename for platform if needed
+            if platform == 'windows':
+                target_name = f"RimModManager-Windows-x64.exe"
+            elif platform == 'darwin':
+                target_name = f"RimModManager-macOS-x64"
+            else:
+                target_name = f"RimModManager-Linux-x64"
+            
+            target_path = Path("dist") / target_name
+            if dist_path.name != target_name:
+                dist_path.rename(target_path)
+                print(f"📦 Renamed to: {target_name}")
         else:
             print(f"⚠️ Output not found at {dist_path}")
             print("Contents of dist/:")
