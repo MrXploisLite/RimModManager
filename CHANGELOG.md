@@ -5,6 +5,29 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-18 - Workshop Collections Support
+
+### Added
+- **Collections Tab**: New "📁 Collections" tab in Workshop browser alongside the existing "📦 Mods" tab.
+- **Collection Browsing**: Browse Steam Workshop collections with search, sort (Most Popular, Most Recent, Trending, Most Favorited), and pagination.
+- **Collection Cards**: Beautiful card UI for collections showing name, author, mod count, subscriptions, favorites, and description.
+- **Collection Details Dialog**: Click "Details" on any collection to see full metadata and list of all mods in the collection.
+- **Add Collection to Queue**: "Add All" button downloads all mods in a collection with one click. Mods are added to queue with collection name prefix.
+- **Collection URL Support**: Batch input now recognizes collection URLs and automatically adds all mods from the collection.
+- **Collection Categories**: 4 collection-specific sort options (Most Popular, Most Recent, Trending, Most Favorited).
+- **Auto-fetch Collections**: Collections tab automatically loads data when first opened.
+
+### Changed
+- **Tabbed Interface**: Workshop browser now uses QTabWidget to separate Mods and Collections views.
+- **Scraper Enhanced**: `workshop_scraper.py` now supports both mod and collection parsing with dedicated functions.
+- **Collection Parsing**: HTML-only approach for collections page (no JavaScript patterns needed).
+
+### New Functions (workshop_scraper.py)
+- `fetch_collections_page()`: Fetch and parse Steam Workshop collections browse page.
+- `fetch_collection_details()`: Get full details for a specific collection including all mod IDs.
+- `fetch_collection_mods()`: Fetch all mods in a collection as WorkshopMod objects.
+- `WorkshopCollection` dataclass: Represents a collection with metadata and mod list.
+
 ## [0.4.1] - 2026-05-18 - Workshop Browser Improvements
 
 ### Added

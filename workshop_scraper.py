@@ -69,15 +69,42 @@ class WorkshopMod:
 
 
 @dataclass
+class WorkshopCollection:
+    """Represents a Steam Workshop collection."""
+    collection_id: str
+    name: str = ""
+    author: str = ""
+    description: str = ""
+    thumbnail_url: str = ""
+    url: str = ""
+    
+    # Stats
+    subscriptions: str = ""
+    favorites: str = ""
+    mod_count: int = 0
+    posted_date: str = ""
+    updated_date: str = ""
+    
+    # Mods in this collection
+    mod_ids: list[str] = field(default_factory=list)
+    mods: list["WorkshopMod"] = field(default_factory=list)
+    
+    # Status
+    is_downloaded: bool = False
+
+
+@dataclass
 class WorkshopPage:
     """Represents a parsed Workshop browse page."""
     mods: list[WorkshopMod] = field(default_factory=list)
+    collections: list[WorkshopCollection] = field(default_factory=list)
     total_results: int = 0
     current_page: int = 1
     total_pages: int = 1
     has_next: bool = False
     has_prev: bool = False
     showing_range: str = ""
+    is_collection_view: bool = False
 
 
 # Category definitions for filtering
@@ -99,6 +126,13 @@ WORKSHOP_CATEGORIES = [
     ("📦 Libraries", "toprated", "Libraries"),
     ("🌍 World", "toprated", "World"),
     ("📖 Story", "toprated", "Story"),
+]
+
+WORKSHOP_COLLECTION_CATEGORIES = [
+    ("🔥 Most Popular", "toprated"),
+    ("🆕 Most Recent", "mostrecent"),
+    ("📈 Trending", "trend"),
+    ("⭐ Most Favorited", "favorited"),
 ]
 
 
@@ -128,9 +162,10 @@ def _fetch_html(url: str, timeout: int = 15) -> Optional[str]:
         return None
 
 
-def parse_workshop_html(html: str) -> WorkshopPage:
+def parse_workshop_html(html: str, is_collection_view: bool = False) -> WorkshopPage:
     """Parse Steam Workshop browse page HTML."""
     page = WorkshopPage()
+    page.is_collection_view = is_collection_view
 
     # Extract total results
     stats_match = re.search(r'Showing\s+\d+-\d+\s+of\s+([\d,]+)\s+entries', html)
@@ -154,6 +189,19 @@ def parse_workshop_html(html: str) -> WorkshopPage:
     page.has_next = page.current_page < page.total_pages
     page.has_prev = page.current_page > 1
 
+    if is_collection_view:
+        # Parse collections
+        _parse_collections_from_html(html, page)
+    else:
+        # Parse mods
+        _parse_mods_from_html(html, page)
+
+    log.info(f"Parsed {len(page.mods)} mods, {len(page.collections)} collections from workshop page")
+    return page
+
+
+def _parse_mods_from_html(html: str, page: WorkshopPage):
+    """Parse individual mods from workshop HTML."""
     # Extract mod data from JavaScript
     js_pattern = re.compile(
         r'SharedFileBindMouseHover\s*\(\s*"sharedfile_(\d+)"\s*,\s*[^,]+,\s*(\{.*?\})\s*\)\s*;',
@@ -193,8 +241,69 @@ def parse_workshop_html(html: str) -> WorkshopPage:
 
         page.mods.append(mod)
 
-    log.info(f"Parsed {len(page.mods)} mods from workshop page")
-    return page
+
+def _parse_collections_from_html(html: str, page: WorkshopPage):
+    """Parse collections from workshop HTML using HTML-only approach."""
+    # Collections page doesn't use SharedFileBindMouseHover
+    # Instead, parse directly from HTML structure
+    
+    # Find all collection items by looking for the pattern:
+    # <a href="...sharedfiles/filedetails/?id=XXX"...>
+    #   ...
+    #   <div class="workshopItemTitle">Name</div>
+    #   Collection by <span class="workshopItemAuthorName">Author</span>
+    #   <div class="workshopItemShortDesc">...</div>
+    
+    # Extract all sharedfiles IDs from links
+    id_pattern = re.compile(r'sharedfiles/filedetails/\?id=(\d+)')
+    all_ids = id_pattern.findall(html)
+    
+    # Extract titles
+    title_pattern = re.compile(r'<div class="workshopItemTitle">([^<]+)</div>')
+    titles = title_pattern.findall(html)
+    
+    # Extract collection authors
+    coll_author_pattern = re.compile(
+        r'Collection by\s+<span class="workshopItemAuthorName">([^<]+)</span>'
+    )
+    coll_authors = coll_author_pattern.findall(html)
+    
+    # Extract thumbnails
+    thumb_pattern = re.compile(r'<img\s+class="workshopItemPreviewImage[^"]*"\s+src="([^"]+)"')
+    thumbnails = thumb_pattern.findall(html)
+    
+    # Extract short descriptions
+    short_desc_pattern = re.compile(r'<div class="workshopItemShortDesc">([^<]+)</div>')
+    short_descs = short_desc_pattern.findall(html)
+    
+    # Build collection list
+    for i, coll_id in enumerate(all_ids):
+        # Skip login links and other non-collection links
+        if i >= len(titles):
+            break
+            
+        coll = WorkshopCollection(collection_id=coll_id)
+        coll.name = titles[i].strip() if i < len(titles) else ""
+        
+        if i < len(coll_authors):
+            coll.author = coll_authors[i].strip()
+        
+        if i < len(thumbnails):
+            coll.thumbnail_url = thumbnails[i]
+        
+        if i < len(short_descs):
+            coll.description = short_descs[i].strip()[:300]
+            
+            # Try to extract mod count from description
+            count_match = re.search(r'(\d+)\s+[Ii]tems', coll.description)
+            if count_match:
+                coll.mod_count = int(count_match.group(1))
+        
+        coll.url = f"https://steamcommunity.com/sharedfiles/filedetails/?id={coll_id}"
+        
+        # Only add if we have a name (skip invalid entries)
+        if coll.name:
+            page.collections.append(coll)
 
 
 def fetch_workshop_page(
@@ -203,6 +312,7 @@ def fetch_workshop_page(
     search_text: str = "",
     tag: str = "",
     timeout: int = 15,
+    section: str = "",
 ) -> WorkshopPage:
     """Fetch and parse a Steam Workshop browse page."""
     base_url = "https://steamcommunity.com/workshop/browse/"
@@ -217,6 +327,8 @@ def fetch_workshop_page(
         params["searchtext"] = search_text
     if tag:
         params["requiredtags[]"] = tag
+    if section:
+        params["section"] = section
 
     url = f"{base_url}?{urllib.parse.urlencode(params)}"
     html = _fetch_html(url, timeout=timeout)
@@ -224,7 +336,119 @@ def fetch_workshop_page(
     if html is None:
         return WorkshopPage()
 
-    return parse_workshop_html(html)
+    return parse_workshop_html(html, is_collection_view=(section == "collections"))
+
+
+def fetch_collections_page(
+    sort: str = "toprated",
+    page: int = 1,
+    search_text: str = "",
+    timeout: int = 15,
+) -> WorkshopPage:
+    """Fetch and parse Steam Workshop collections browse page."""
+    return fetch_workshop_page(
+        sort=sort,
+        page=page,
+        search_text=search_text,
+        section="collections",
+        timeout=timeout,
+    )
+
+
+def fetch_collection_details(collection_id: str, timeout: int = 20) -> Optional[WorkshopCollection]:
+    """
+    Fetch full details for a Steam Workshop collection including all mod IDs.
+    Returns a WorkshopCollection with populated mod_ids list.
+    """
+    url = f"https://steamcommunity.com/workshop/collection/?id={collection_id}"
+    html = _fetch_html(url, timeout=timeout)
+
+    if html is None:
+        return None
+
+    coll = WorkshopCollection(collection_id=collection_id, url=url)
+
+    # Extract collection name
+    name_match = re.search(r'<div\s+class="workshopItemTitle"[^>]*>([^<]+)</div>', html)
+    if name_match:
+        coll.name = name_match.group(1).strip()
+
+    # Extract author
+    author_match = re.search(r'class="workshop_author_link"[^>]*>([^<]+)</a>', html)
+    if author_match:
+        coll.author = author_match.group(1).strip()
+
+    # Extract description
+    desc_match = re.search(r'<div\s+class="workshopItemDescription">(.*?)</div>', html, re.DOTALL)
+    if desc_match:
+        desc = re.sub(r'<[^>]+>', '', desc_match.group(1))
+        coll.description = desc.strip()[:500]
+
+    # Extract thumbnail
+    thumb_match = re.search(r'<img[^>]+id="previewImage"[^>]+src="([^"]+)"', html)
+    if thumb_match:
+        coll.thumbnail_url = thumb_match.group(1)
+
+    # Extract stats
+    stats_left = re.findall(r'<div class="detailsStatLeft">([^<]+)</div>', html)
+    stats_right = re.findall(r'<div class="detailsStatRight">([^<]+)</div>', html)
+    
+    for i, label in enumerate(stats_left):
+        if i < len(stats_right):
+            value = stats_right[i].strip()
+            if "Posted" in label:
+                coll.posted_date = value
+            elif "Updated" in label:
+                coll.updated_date = value
+
+    # Extract subscriptions
+    sub_match = re.search(r'Subscriptions.*?<div[^>]*>([^<]+)</div>', html, re.DOTALL)
+    if sub_match:
+        coll.subscriptions = sub_match.group(1).strip()
+
+    # Extract favorites
+    fav_match = re.search(r'Favorited.*?<div[^>]*>([^<]+)</div>', html, re.DOTALL)
+    if fav_match:
+        coll.favorites = fav_match.group(1).strip()
+
+    # Extract mod count
+    count_match = re.search(r'(\d[\d,]*)\s+Items', html)
+    if count_match:
+        coll.mod_count = int(count_match.group(1).replace(",", ""))
+
+    # Extract all mod IDs from the collection
+    # Steam lists collection items with links to filedetails
+    mod_ids = re.findall(r'sharedfiles/filedetails/\?id=(\d+)', html)
+    coll.mod_ids = list(set(mod_ids))
+
+    # Also check for required items pattern
+    if not coll.mod_ids:
+        required_links = re.findall(
+            r'<a[^>]*href="[^"]*sharedfiles/filedetails/\?id=(\d+)"[^>]*>',
+            html
+        )
+        coll.mod_ids = list(set(required_links))
+
+    log.info(f"Collection {collection_id}: {coll.name} - {len(coll.mod_ids)} mods found")
+    return coll if coll.name else None
+
+
+def fetch_collection_mods(collection_id: str, timeout: int = 20) -> list[WorkshopMod]:
+    """
+    Fetch all mods in a collection.
+    Returns a list of WorkshopMod objects for each mod in the collection.
+    """
+    coll = fetch_collection_details(collection_id, timeout=timeout)
+    if not coll or not coll.mod_ids:
+        return []
+
+    mods = []
+    for mod_id in coll.mod_ids:
+        mod = fetch_mod_details(mod_id, timeout=timeout)
+        if mod:
+            mods.append(mod)
+
+    return mods
 
 
 def fetch_mod_details(workshop_id: str, timeout: int = 15) -> Optional[WorkshopMod]:
