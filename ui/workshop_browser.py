@@ -7,7 +7,6 @@ No WebEngine needed - uses workshop_scraper.py for all data.
 import re
 import threading
 import logging
-from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -15,17 +14,16 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QProgressBar,
     QSplitter, QGroupBox, QCheckBox, QTextEdit,
-    QApplication, QScrollArea, QFrame, QSizePolicy, QComboBox,
-    QMessageBox, QDialog, QDialogButtonBox, QTabWidget
+    QApplication, QScrollArea, QFrame, QComboBox,
+    QMessageBox, QDialog, QTabWidget
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QUrl, QTimer
-from PyQt6.QtGui import QPixmap, QDesktopServices, QIcon, QFont
-from game_detector import PLATFORM
+from PyQt6.QtGui import QPixmap, QDesktopServices
 from workshop_scraper import (
     WorkshopMod, WorkshopPage, WorkshopCollection,
     fetch_workshop_page, fetch_mod_details,
-    fetch_mod_requirements, fetch_collections_page, fetch_collection_details,
-    _get_opener, WORKSHOP_CATEGORIES, WORKSHOP_COLLECTION_CATEGORIES
+    fetch_collections_page, fetch_collection_details,
+    WORKSHOP_CATEGORIES, WORKSHOP_COLLECTION_CATEGORIES
 )
 
 log = logging.getLogger("rimmodmanager.workshop_browser")
@@ -1636,7 +1634,7 @@ class WorkshopBrowser(QWidget):
     
     def _on_collection_add_requested(self, collection_id: str):
         """Handle add collection to queue request."""
-        self.status_label.setText(f"Fetching collection details...")
+        self.status_label.setText("Fetching collection details...")
         
         fetcher = CollectionDetailFetcherThread(collection_id, parent=self)
         fetcher.finished.connect(lambda c: self._add_collection_to_queue(c), Qt.ConnectionType.QueuedConnection)
@@ -1669,13 +1667,13 @@ class WorkshopBrowser(QWidget):
     
     def _on_collection_details_error(self, collection_id: str):
         """Handle collection details fetch error."""
-        self.status_label.setText(f"Failed to fetch collection details. Try again later.")
+        self.status_label.setText("Failed to fetch collection details. Try again later.")
         QMessageBox.warning(
             self,
             "Fetch Failed",
-            f"Could not fetch details for this collection.\n\n"
-            f"This may be due to Steam rate limiting.\n"
-            f"Please wait a moment and try again."
+            "Could not fetch details for this collection.\n\n"
+            "This may be due to Steam rate limiting.\n"
+            "Please wait a moment and try again."
         )
     
     def _show_collection_details_dialog(self, collection: WorkshopCollection):
@@ -1890,7 +1888,7 @@ class WorkshopBrowser(QWidget):
     
     def _on_mod_details_error(self, workshop_id: str, error: str):
         """Handle mod details fetch error."""
-        self.status_label.setText(f"Failed to fetch mod details. Try again later.")
+        self.status_label.setText("Failed to fetch mod details. Try again later.")
         QMessageBox.warning(
             self,
             "Fetch Failed",

@@ -9,7 +9,6 @@ Cross-platform configuration storage.
 import json
 import logging
 import os
-import platform
 import sys
 from pathlib import Path
 from typing import Any, Optional

@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QInputDialog, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QColor, QKeySequence, QShortcut, QIcon
+from PyQt6.QtGui import QAction, QColor, QKeySequence, QShortcut
 from PyQt6.QtCore import QSize
 
 from config_handler import ConfigHandler
@@ -324,22 +324,22 @@ class GameLaunchDialog(QDialog):
                 self._log(f"[OK] Found: {exe}", "#69db7c")
                 break
             else:
-                self._log(f"[--] Not found", "#888888")
+                self._log("[--] Not found", "#888888")
         
         if not exe_path:
-            self._log(f"[ERROR] No executable found!", "#ff6b6b")
+            self._log("[ERROR] No executable found!", "#ff6b6b")
             self.status_label.setText("❌ Failed - No executable found")
             return
         
         # Check if Steam owns this game
-        self._log(f"\n[SCAN] Checking Steam license...", "#ffd43b")
+        self._log("\n[SCAN] Checking Steam license...", "#ffd43b")
         has_steam_license = self._check_steam_license()
         
         if has_steam_license:
-            self._log(f"[OK] Steam license found - launching via Steam", "#69db7c")
+            self._log("[OK] Steam license found - launching via Steam", "#69db7c")
             self._launch_via_steam()
         else:
-            self._log(f"[INFO] No Steam license - launching directly (standalone/crack)", "#74c0fc")
+            self._log("[INFO] No Steam license - launching directly (standalone/crack)", "#74c0fc")
             self._launch_direct(exe_path, game_path, is_windows)
     
     def _check_steam_license(self) -> bool:
@@ -378,12 +378,12 @@ class GameLaunchDialog(QDialog):
                 try:
                     content = manifest.read_text()
                     if '"StateFlags"' in content and '"4"' in content:
-                        self._log(f"[OK] Game is fully installed via Steam", "#69db7c")
+                        self._log("[OK] Game is fully installed via Steam", "#69db7c")
                         return True
                 except (IOError, OSError):
                     pass
         
-        self._log(f"[--] No Steam license/manifest found", "#888888")
+        self._log("[--] No Steam license/manifest found", "#888888")
         return False
     
     def _find_proton(self) -> Optional[str]:
@@ -419,7 +419,7 @@ class GameLaunchDialog(QDialog):
                 except PermissionError:
                     pass
         
-        self._log(f"[--] No Proton installation found", "#888888")
+        self._log("[--] No Proton installation found", "#888888")
         return None
     
     def _launch_via_steam(self):
@@ -432,7 +432,7 @@ class GameLaunchDialog(QDialog):
         else:
             system = 'linux'
         
-        self._log(f"\n[LAUNCH] Starting via Steam...", "#ffd43b")
+        self._log("\n[LAUNCH] Starting via Steam...", "#ffd43b")
         
         try:
             if system == 'windows':
@@ -449,7 +449,7 @@ class GameLaunchDialog(QDialog):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-            self._log(f"[OK] Steam launch command sent!", "#69db7c")
+            self._log("[OK] Steam launch command sent!", "#69db7c")
             self.status_label.setText("✅ Launched via Steam!")
         except (OSError, subprocess.SubprocessError) as e:
             self._log(f"[ERROR] {e}", "#ff6b6b")
@@ -465,19 +465,19 @@ class GameLaunchDialog(QDialog):
         else:
             system = 'linux'
         
-        self._log(f"\n[LAUNCH] Starting directly...", "#ffd43b")
+        self._log("\n[LAUNCH] Starting directly...", "#ffd43b")
         
         try:
             if system == 'windows':
                 # On Windows, just run the exe directly
-                self._log(f"[INFO] Running Windows executable directly", "#74c0fc")
+                self._log("[INFO] Running Windows executable directly", "#74c0fc")
                 subprocess.Popen(
                     [str(exe_path)],
                     cwd=str(game_path),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                self._log(f"[OK] Game started!", "#69db7c")
+                self._log("[OK] Game started!", "#69db7c")
                 self.status_label.setText("✅ Launched!")
                 
             elif system == 'darwin':  # macOS
@@ -500,34 +500,34 @@ class GameLaunchDialog(QDialog):
                             env=env,
                             start_new_session=True  # Fully detach from parent
                         )
-                        self._log(f"[OK] Game started with Wine!", "#69db7c")
-                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
-                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
+                        self._log("[OK] Game started with Wine!", "#69db7c")
+                        self._log("[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log("      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Wine!")
                     else:
-                        self._log(f"[ERROR] Wine not found!", "#ff6b6b")
-                        self._log(f"[TIP] Install Wine via: brew install --cask wine-stable", "#ffd43b")
+                        self._log("[ERROR] Wine not found!", "#ff6b6b")
+                        self._log("[TIP] Install Wine via: brew install --cask wine-stable", "#ffd43b")
                         self.status_label.setText("❌ Wine not installed")
                 elif exe_path.suffix == '.app' or '.app' in str(exe_path):
                     # macOS app bundle
-                    self._log(f"[INFO] Running macOS app bundle", "#74c0fc")
+                    self._log("[INFO] Running macOS app bundle", "#74c0fc")
                     subprocess.Popen(
                         ["open", str(exe_path)],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                    self._log(f"[OK] Game started!", "#69db7c")
+                    self._log("[OK] Game started!", "#69db7c")
                     self.status_label.setText("✅ Launched!")
                 else:
                     # Native macOS binary
-                    self._log(f"[INFO] Running native macOS executable", "#74c0fc")
+                    self._log("[INFO] Running native macOS executable", "#74c0fc")
                     subprocess.Popen(
                         [str(exe_path)],
                         cwd=str(game_path),
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
-                    self._log(f"[OK] Game started!", "#69db7c")
+                    self._log("[OK] Game started!", "#69db7c")
                     self.status_label.setText("✅ Launched!")
                 
             else:  # Linux
@@ -536,7 +536,7 @@ class GameLaunchDialog(QDialog):
                     proton_cmd = self._find_proton()
                     if proton_cmd:
                         self._log(f"[OK] Found Proton: {proton_cmd}", "#69db7c")
-                        self._log(f"[INFO] Launching with Proton...", "#74c0fc")
+                        self._log("[INFO] Launching with Proton...", "#74c0fc")
                         
                         env = os.environ.copy()
                         
@@ -593,13 +593,13 @@ class GameLaunchDialog(QDialog):
                                 env=env,
                                 start_new_session=True  # Fully detach from parent
                             )
-                        self._log(f"[OK] Game started with Proton!", "#69db7c")
-                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
-                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
+                        self._log("[OK] Game started with Proton!", "#69db7c")
+                        self._log("[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log("      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Proton!")
                     elif shutil.which("wine"):
                         # Fallback to wine
-                        self._log(f"[INFO] Proton not found, using Wine...", "#74c0fc")
+                        self._log("[INFO] Proton not found, using Wine...", "#74c0fc")
                         
                         env = os.environ.copy()
                         if self.installation.proton_prefix:
@@ -614,17 +614,17 @@ class GameLaunchDialog(QDialog):
                             env=env,
                             start_new_session=True  # Fully detach from parent
                         )
-                        self._log(f"[OK] Game started with Wine!", "#69db7c")
-                        self._log(f"[TIP] If mods disable when closing this app, enable", "#ffd43b")
-                        self._log(f"      Development Mode in RimWorld Options > General", "#ffd43b")
+                        self._log("[OK] Game started with Wine!", "#69db7c")
+                        self._log("[TIP] If mods disable when closing this app, enable", "#ffd43b")
+                        self._log("      Development Mode in RimWorld Options > General", "#ffd43b")
                         self.status_label.setText("✅ Launched with Wine!")
                     else:
-                        self._log(f"[ERROR] No Proton or Wine found!", "#ff6b6b")
-                        self._log(f"[TIP] Install proton or wine to run Windows games", "#ffd43b")
+                        self._log("[ERROR] No Proton or Wine found!", "#ff6b6b")
+                        self._log("[TIP] Install proton or wine to run Windows games", "#ffd43b")
                         self.status_label.setText("❌ Proton/Wine not installed")
                 else:
                     # Native Linux
-                    self._log(f"[INFO] Running native Linux executable", "#74c0fc")
+                    self._log("[INFO] Running native Linux executable", "#74c0fc")
                     subprocess.Popen(
                         [str(exe_path)],
                         cwd=str(game_path),
@@ -632,7 +632,7 @@ class GameLaunchDialog(QDialog):
                         stderr=subprocess.DEVNULL,
                         start_new_session=True  # Fully detach from parent
                     )
-                    self._log(f"[OK] Game started!", "#69db7c")
+                    self._log("[OK] Game started!", "#69db7c")
                     self.status_label.setText("✅ Launched!")
                 
         except (OSError, subprocess.SubprocessError) as e:
@@ -1668,14 +1668,14 @@ class MainWindow(QMainWindow):
             use_copy = install.is_windows_build and install.proton_prefix is not None
             self.installer = ModInstaller(mods_folder, use_copy=use_copy)
             if use_copy:
-                log.info(f"ModInstaller using copy mode for Proton/Wine compatibility")
+                log.info("ModInstaller using copy mode for Proton/Wine compatibility")
             
             # Set up downloader - use game's Mods folder as default for standalone
             download_path = self.config.get_default_workshop_path()
             
             # If download path is game's Mods folder, log it
             if Path(download_path).resolve() == mods_folder.resolve():
-                log.info(f"Downloading mods directly to game's Mods folder (no copy needed)")
+                log.info("Downloading mods directly to game's Mods folder (no copy needed)")
             
             self.downloader = WorkshopDownloader(download_path)
             
@@ -1734,7 +1734,7 @@ class MainWindow(QMainWindow):
                             if install.config_path:
                                 log.debug(f"Config path found: {install.config_path}")
                             else:
-                                log.debug(f"Config path still not found after setting prefix")
+                                log.debug("Config path still not found after setting prefix")
                 
                 self._detect_installations()
                 # Select the new installation
@@ -2065,7 +2065,7 @@ class MainWindow(QMainWindow):
             return
         
         log.info(f"Checking updates for {len(workshop_mods)} Workshop mods on startup...")
-        self.status_bar.showMessage(f"Checking for mod updates...")
+        self.status_bar.showMessage("Checking for mod updates...")
         
         # Switch to Tools tab and trigger update check
         self.main_tabs.setCurrentIndex(4)  # Tools tab
@@ -2536,7 +2536,7 @@ class MainWindow(QMainWindow):
         summary += f"<b>Workshop IDs:</b> {len(result.workshop_ids)}<br>"
         
         if result.warnings:
-            summary += f"<br><b>Warnings:</b><br>"
+            summary += "<br><b>Warnings:</b><br>"
             for w in result.warnings[:5]:
                 summary += f"• {w}<br>"
             if len(result.warnings) > 5:

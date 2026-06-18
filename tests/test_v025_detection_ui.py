@@ -2,8 +2,6 @@
 Regression tests for v0.2.5 - Game detection and fullscreen.
 """
 
-import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +10,10 @@ from pathlib import Path
 class TestLinuxStandaloneDetection(unittest.TestCase):
     """Test Linux standalone (GOG/manual) detection."""
     
-    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux standalone detection runs only on Linux")
+    @unittest.skipUnless(
+        __import__('game_detector').PLATFORM == 'linux',
+        "Linux standalone scanning only runs on Linux",
+    )
     def test_detects_standalone_in_home(self):
         """Should detect RimWorld in ~/RimWorld/ with nested structure."""
         from game_detector import GameDetector, InstallationType
@@ -120,7 +121,7 @@ class TestFullscreenCodeExists(unittest.TestCase):
     
     def test_toggle_fullscreen_method_exists(self):
         """main_window.py should have _toggle_fullscreen method."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("def _toggle_fullscreen", content)
@@ -129,28 +130,28 @@ class TestFullscreenCodeExists(unittest.TestCase):
     
     def test_f11_shortcut_exists(self):
         """F11 shortcut should be set for fullscreen."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn('"F11"', content)
     
     def test_view_menu_exists(self):
         """View menu should exist in menu bar."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn('addMenu("View")', content)
     
     def test_reset_window_size_exists(self):
         """Reset window size method should exist."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("def _reset_window_size", content)
     
     def test_close_event_saves_maximized(self):
         """closeEvent should save window_maximized state."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("window_maximized", content)
@@ -158,7 +159,7 @@ class TestFullscreenCodeExists(unittest.TestCase):
     
     def test_restore_maximized_on_startup(self):
         """Should restore maximized state on startup."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("showMaximized", content)

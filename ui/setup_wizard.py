@@ -7,11 +7,10 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QTextEdit, QComboBox, QGroupBox, QFrame
+    QProgressBar, QTextEdit, QGroupBox, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 

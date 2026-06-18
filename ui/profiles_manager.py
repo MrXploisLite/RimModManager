@@ -547,7 +547,7 @@ class ImportExportTab(QWidget):
         mods_config = self.config_parser.find_mods_config(self._config_path)
         if mods_config:
             active_mods, version, _ = self.config_parser.parse_mods_config(self._config_path)
-            self.status_label.setText(f"✅ ModsConfig.xml found")
+            self.status_label.setText("✅ ModsConfig.xml found")
             self.game_info_label.setText(
                 f"Path: {mods_config}\n"
                 f"Game version: {version or 'Unknown'}\n"

@@ -153,7 +153,7 @@ class TestModlistManagement(unittest.TestCase):
         self.assertTrue(filepath.exists())
         
         # Verify content
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         self.assertEqual(data["name"], "test_list")
