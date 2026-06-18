@@ -53,15 +53,21 @@ def check_dependencies() -> bool:
 def acquire_single_instance_lock(lock_file):
     """Acquire an exclusive single-instance lock cross-platform.
 
-    Returns the open file object on success, or None if another instance
-    already holds the lock. The OS releases the lock automatically if the
-    process dies, so stale locks from crashes don't block future launches.
+    Returns a ``(lock_fd, status)`` tuple where ``status`` is one of:
+
+    - ``"acquired"``: this process holds the lock; ``lock_fd`` is the open file.
+    - ``"held"``: another instance already holds the lock; ``lock_fd`` is None.
+    - ``"unavailable"``: the lock file could not be created (e.g. permissions),
+      so single-instance enforcement is skipped; ``lock_fd`` is None.
+
+    The OS releases the lock automatically if the process dies, so stale locks
+    from crashes don't block future launches.
     """
     try:
         lock_fd = open(lock_file, 'w', encoding='utf-8')
     except OSError:
-        # If we can't even open the lock file, don't block startup.
-        return None
+        # We can't even create the lock file - skip enforcement, don't block startup.
+        return None, "unavailable"
 
     try:
         if sys.platform.startswith('win'):
@@ -72,18 +78,20 @@ def acquire_single_instance_lock(lock_file):
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         lock_fd.close()
-        return None
+        return None, "held"
 
     try:
         lock_fd.write(str(os.getpid()))
         lock_fd.flush()
     except OSError:
         pass
-    return lock_fd
+    return lock_fd, "acquired"
 
 
 def release_single_instance_lock(lock_fd, lock_file):
     """Release a lock acquired by acquire_single_instance_lock."""
+    if lock_fd is None:
+        return
     try:
         if sys.platform.startswith('win'):
             import msvcrt
@@ -170,13 +178,16 @@ def main():
     
     # Single-instance lock (cross-platform: msvcrt on Windows, fcntl elsewhere)
     lock_file = config.config_dir / ".instance.lock"
-    lock_fd = acquire_single_instance_lock(lock_file)
-    if lock_fd is None:
+    lock_fd, lock_status = acquire_single_instance_lock(lock_file)
+    if lock_status == "held":
         logger.warning("Another instance is already running. Exiting.")
-        if QApplication.instance() is None:
-            QApplication(sys.argv)
+        # Keep a reference so the QApplication wrapper isn't collected before
+        # the modal dialog runs.
+        guard_app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
         QMessageBox.warning(None, "RimModManager", "Another instance of RimModManager is already running.")
         return 1
+    elif lock_status == "unavailable":
+        logger.warning("Could not create single-instance lock; continuing without it.")
     
     # Create application
     app = QApplication(sys.argv)
