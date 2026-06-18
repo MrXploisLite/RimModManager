@@ -2,11 +2,8 @@
 Regression tests for v0.3.0 - Big Update.
 """
 
-import json
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestSetupWizardConfig(unittest.TestCase):
@@ -81,7 +78,7 @@ class TestExpandedGameDetection(unittest.TestCase):
     
     def test_detect_linux_standalone_calls_new_methods(self):
         """Linux detection should call Lutris, Bottles, Heroic methods."""
-        with open("game_detector.py", 'r') as f:
+        with open("game_detector.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("self._detect_lutris()", content)
@@ -116,14 +113,14 @@ class TestSetupWizardModule(unittest.TestCase):
     
     def test_setup_wizard_imported_in_main_window(self):
         """main_window.py should import SetupWizard."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("from ui.setup_wizard import SetupWizard", content)
     
     def test_show_setup_wizard_method_exists(self):
         """MainWindow should have _show_setup_wizard method."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("def _show_setup_wizard", content)
@@ -131,7 +128,7 @@ class TestSetupWizardModule(unittest.TestCase):
     
     def test_first_run_check_in_init(self):
         """MainWindow __init__ should check first_run."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("self.config.config.first_run", content)
@@ -143,7 +140,7 @@ class TestNoFeatureLoss(unittest.TestCase):
     
     def test_all_existing_methods_still_exist(self):
         """Key methods should still exist in main_window.py."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         # Core features
@@ -168,7 +165,7 @@ class TestNoFeatureLoss(unittest.TestCase):
     
     def test_all_ui_components_still_exist(self):
         """Key UI components should still exist."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         required_components = [
@@ -188,7 +185,7 @@ class TestNoFeatureLoss(unittest.TestCase):
     
     def test_all_modules_still_imported(self):
         """All existing modules should still be imported."""
-        with open("ui/main_window.py", 'r') as f:
+        with open("ui/main_window.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         required_imports = [
@@ -220,7 +217,7 @@ class TestExpandedDetectionPaths(unittest.TestCase):
     
     def test_lutris_paths_in_code(self):
         """Lutris paths should be in game detector."""
-        with open("game_detector.py", 'r') as f:
+        with open("game_detector.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn(".local/share/lutris", content)
@@ -228,7 +225,7 @@ class TestExpandedDetectionPaths(unittest.TestCase):
     
     def test_bottles_paths_in_code(self):
         """Bottles paths should be in game detector."""
-        with open("game_detector.py", 'r') as f:
+        with open("game_detector.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn(".var/app/com.usebottles.bottles", content)
@@ -236,7 +233,7 @@ class TestExpandedDetectionPaths(unittest.TestCase):
     
     def test_heroic_paths_in_code(self):
         """Heroic paths should be in game detector."""
-        with open("game_detector.py", 'r') as f:
+        with open("game_detector.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("Games/Heroic", content)

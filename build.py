@@ -4,7 +4,6 @@ Creates standalone executables for Linux, Windows, and macOS using PyInstaller.
 """
 
 import PyInstaller.__main__
-import os
 import sys
 import shutil
 from pathlib import Path
@@ -112,11 +111,11 @@ def build():
             
             # Rename for platform if needed
             if platform == 'windows':
-                target_name = f"RimModManager-Windows-x64.exe"
+                target_name = "RimModManager-Windows-x64.exe"
             elif platform == 'darwin':
-                target_name = f"RimModManager-macOS-x64"
+                target_name = "RimModManager-macOS-x64"
             else:
-                target_name = f"RimModManager-Linux-x64"
+                target_name = "RimModManager-Linux-x64"
             
             target_path = Path("dist") / target_name
             if dist_path.name != target_name:

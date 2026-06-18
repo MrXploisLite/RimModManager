@@ -95,12 +95,12 @@ class PresetEncoder:
         
         # Validate format
         if not code.startswith(f"{PRESET_PREFIX}:"):
-            log.warning(f"Invalid preset code prefix")
+            log.warning("Invalid preset code prefix")
             return None
         
         parts = code.split(':', 2)
         if len(parts) != 3:
-            log.warning(f"Invalid preset code format")
+            log.warning("Invalid preset code format")
             return None
         
         prefix, version, b64_data = parts

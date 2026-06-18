@@ -251,7 +251,7 @@ class LiveDownloadWorker(QThread):
             self.log_output.emit(f"\n[INFO] Starting BATCH download of {len(ids_to_download)} mod(s)")
             if skipped > 0:
                 self.log_output.emit(f"[INFO] Skipped {skipped} already downloaded mod(s)")
-            self.log_output.emit(f"[INFO] Using single SteamCMD session\n")
+            self.log_output.emit("[INFO] Using single SteamCMD session\n")
             
             results = self._download_batch(ids_to_download)
         
@@ -471,7 +471,7 @@ class LiveDownloadWorker(QThread):
             
             self.log_output.emit(f"{'='*50}")
             self.log_output.emit(f"[BATCH] Downloading {len(workshop_ids)} mods in single session")
-            self.log_output.emit(f"[INFO] This may take a while for large collections...")
+            self.log_output.emit("[INFO] This may take a while for large collections...")
             self.log_output.emit(f"{'='*50}\n")
             
             try:

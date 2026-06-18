@@ -3,11 +3,9 @@ Regression tests for v0.2.3 - Reliability improvements.
 """
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestSteamCMDValidation(unittest.TestCase):
@@ -51,8 +49,7 @@ class TestAtomicWrites(unittest.TestCase):
     
     def test_config_atomic_write(self):
         """Config save should use atomic write (temp file + rename)."""
-        from config_handler import ConfigHandler, AppConfig
-        from dataclasses import asdict
+        from config_handler import ConfigHandler
         
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -71,7 +68,7 @@ class TestAtomicWrites(unittest.TestCase):
             self.assertTrue(config_file.exists())
             
             # Verify content
-            with open(config_file, 'r') as f:
+            with open(config_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             self.assertEqual(data["theme"], "Dark")
     
@@ -102,7 +99,7 @@ class TestBareExceptFixes(unittest.TestCase):
     
     def test_build_script_no_bare_except(self):
         """build.py should not have bare except clauses."""
-        with open("build.py", 'r') as f:
+        with open("build.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         # Check for bare except (except: without specific exception)
@@ -114,7 +111,7 @@ class TestBareExceptFixes(unittest.TestCase):
     
     def test_workshop_downloader_no_bare_except(self):
         """workshop_downloader.py should not have bare except clauses."""
-        with open("workshop_downloader.py", 'r') as f:
+        with open("workshop_downloader.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         lines = content.split('\n')
@@ -142,7 +139,7 @@ class TestSingleInstanceLock(unittest.TestCase):
     def test_lock_file_created(self):
         """main.py should create a lock file on startup."""
         # This test just verifies the code structure exists
-        with open("main.py", 'r') as f:
+        with open("main.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("fcntl.flock", content)

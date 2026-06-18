@@ -6,7 +6,6 @@ Tests different approaches to minimize RAM usage.
 
 import os
 import sys
-import time
 import subprocess
 import resource
 
@@ -26,20 +25,18 @@ def get_memory_mb():
 
 def measure_import(module_name, description):
     """Measure memory before and after importing a module."""
-    mem_before = get_memory_mb()
-    
     # Import in a fresh subprocess for accurate measurement
     code = f"""
 import os, sys, resource
 before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 try:
     {module_name}
-except Exception as e:
+except Exception:
     pass
 import gc
 gc.collect()
 after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
-print(f"{after - before:.1f}")
+print(f"{{after - before:.1f}}")
 """
     result = subprocess.run(
         [sys.executable, '-c', code],

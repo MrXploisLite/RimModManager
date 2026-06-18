@@ -7,7 +7,6 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestWorkshopIDValidation(unittest.TestCase):
@@ -124,7 +123,7 @@ class TestNetworkRetryLogic(unittest.TestCase):
     
     def test_download_manager_has_retry_logic(self):
         """Download manager should have retry logic for API calls."""
-        with open("ui/download_manager.py", 'r') as f:
+        with open("ui/download_manager.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("max_retries", content)
@@ -132,7 +131,7 @@ class TestNetworkRetryLogic(unittest.TestCase):
     
     def test_workshop_browser_has_retry_logic(self):
         """Workshop scraper should have retry logic for API calls."""
-        with open("workshop_scraper.py", 'r') as f:
+        with open("workshop_scraper.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         # Scraper uses cookie-based session management
@@ -141,7 +140,7 @@ class TestNetworkRetryLogic(unittest.TestCase):
     
     def test_compatibility_db_has_retry_logic(self):
         """Compatibility database should have retry logic."""
-        with open("compatibility_db.py", 'r') as f:
+        with open("compatibility_db.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("max_retries", content)
@@ -153,7 +152,7 @@ class TestDownloadValidation(unittest.TestCase):
     
     def test_run_validates_steamcmd_path(self):
         """Download manager should validate SteamCMD path before starting."""
-        with open("ui/download_manager.py", 'r') as f:
+        with open("ui/download_manager.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("Validate SteamCMD path", content)
@@ -161,7 +160,7 @@ class TestDownloadValidation(unittest.TestCase):
     
     def test_run_validates_download_directory(self):
         """Download manager should validate download directory write access."""
-        with open("ui/download_manager.py", 'r') as f:
+        with open("ui/download_manager.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("Cannot write to download directory", content)
@@ -173,7 +172,7 @@ class TestHTTPErrorHandling(unittest.TestCase):
     
     def test_download_manager_handles_http_errors(self):
         """Download manager should handle HTTP errors specifically."""
-        with open("ui/download_manager.py", 'r') as f:
+        with open("ui/download_manager.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("urllib.error.HTTPError", content)
@@ -181,7 +180,7 @@ class TestHTTPErrorHandling(unittest.TestCase):
     
     def test_workshop_scraper_handles_http_errors(self):
         """Workshop scraper should handle HTTP errors specifically."""
-        with open("workshop_scraper.py", 'r') as f:
+        with open("workshop_scraper.py", 'r', encoding='utf-8') as f:
             content = f.read()
         
         self.assertIn("urllib.error.HTTPError", content)
