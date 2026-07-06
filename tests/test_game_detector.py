@@ -134,7 +134,10 @@ class TestGameDetector(unittest.TestCase):
         """Test symlink and real path resolve to one installation."""
         rimworld_path = self._create_mock_rimworld(self.temp_dir / "RimWorld")
         symlink_path = self.temp_dir / "RimWorldLink"
-        symlink_path.symlink_to(rimworld_path, target_is_directory=True)
+        try:
+            symlink_path.symlink_to(rimworld_path, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"Symlink creation is not available in this environment: {exc}")
 
         detector = GameDetector(custom_paths=[str(rimworld_path), str(symlink_path)])
         detector._detect_custom_paths()

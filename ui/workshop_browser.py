@@ -818,7 +818,7 @@ class WorkshopBrowser(QWidget):
         self.downloaded_ids = downloaded_ids or set()
         self.queue: list[WorkshopItem] = []
         self.queue_ids: set[str] = set()
-        self._queueLock = threading.Lock()
+        self._queue_lock = threading.Lock()
         self._disable_webengine = disable_webengine
         
         # Scraper state - Mods
@@ -2263,6 +2263,70 @@ class WorkshopBrowser(QWidget):
             self._add_id_to_queue(match.group(1))
             self.status_label.setText("Collection added to queue")
     
+    def _set_card_downloaded(self, card, downloaded: bool) -> None:
+        """Update a mod or collection card after download state changes."""
+        if hasattr(card, 'mod'):
+            card.mod.is_downloaded = downloaded
+            card.downloaded_ids = self.downloaded_ids
+        elif hasattr(card, 'collection'):
+            card.collection.is_downloaded = downloaded
+            card.downloaded_ids = self.downloaded_ids
+
+        if hasattr(card, 'btn_add') and downloaded:
+            card.btn_add.setText("Added")
+            card.btn_add.setEnabled(False)
+
+    def refresh_downloaded_ids(self, download_path: Path = None) -> None:
+        """Refresh known downloaded Workshop IDs from disk and update visible cards."""
+        refreshed_ids = set(self.downloaded_ids)
+
+        if download_path:
+            try:
+                download_path = Path(download_path)
+                if download_path.exists():
+                    for item in download_path.iterdir():
+                        if item.is_dir() and item.name.isdigit():
+                            refreshed_ids.add(item.name)
+            except (OSError, ValueError):
+                pass
+
+        self.downloaded_ids = refreshed_ids
+
+        for card in self.mod_cards:
+            workshop_id = card.mod.workshop_id
+            downloaded = workshop_id in self.downloaded_ids
+            if card.mod.required_mod_ids:
+                missing = [req for req in card.mod.required_mod_ids if req not in self.downloaded_ids]
+                card.mod.missing_requirements = missing
+                card.mod.has_all_requirements = len(missing) == 0
+            self._set_card_downloaded(card, downloaded)
+
+        for card in self.collection_cards:
+            collection = card.collection
+            downloaded = collection.collection_id in self.downloaded_ids
+            if collection.mod_ids:
+                downloaded = all(mod_id in self.downloaded_ids for mod_id in collection.mod_ids)
+            self._set_card_downloaded(card, downloaded)
+
+    def clear_completed(self) -> None:
+        """Remove downloaded items from the queue after a download run finishes."""
+        removed = 0
+
+        for row in range(self.queue_list.count() - 1, -1, -1):
+            item = self.queue_list.item(row)
+            workshop_item = getattr(item, 'workshop_item', None)
+            if not workshop_item or workshop_item.workshop_id not in self.downloaded_ids:
+                continue
+
+            self.queue_list.takeItem(row)
+            with self._queue_lock:
+                self.queue_ids.discard(workshop_item.workshop_id)
+                self.queue = [q for q in self.queue if q.workshop_id != workshop_item.workshop_id]
+            removed += 1
+
+        self.queue_count.setText(f"({len(self.queue)})")
+        if removed:
+            self.status_label.setText(f"Cleared {removed} completed download(s)")
     def _start_download(self):
         """Start downloading all queued mods."""
         with self._queue_lock:

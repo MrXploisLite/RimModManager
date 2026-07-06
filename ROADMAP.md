@@ -1,6 +1,6 @@
 # RimModManager Roadmap
 
-## Current Version: v0.5.2
+## Current Version: v0.5.3
 
 ---
 

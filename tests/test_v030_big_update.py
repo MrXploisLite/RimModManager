@@ -97,14 +97,20 @@ class TestSetupWizardModule(unittest.TestCase):
         self.assertTrue(Path("ui/setup_wizard.py").exists())
     
     def test_setup_wizard_class_exists(self):
-        """SetupWizard class should be importable."""
-        from ui.setup_wizard import SetupWizard
+        """SetupWizard class should be importable when PyQt6 is installed."""
+        try:
+            from ui.setup_wizard import SetupWizard
+        except ImportError as exc:
+            self.skipTest(f"PyQt6 is not installed: {exc}")
         
         self.assertTrue(hasattr(SetupWizard, 'setup_complete'))
     
     def test_setup_worker_class_exists(self):
-        """SetupWorker class should be importable."""
-        from ui.setup_wizard import SetupWorker
+        """SetupWorker class should be importable when PyQt6 is installed."""
+        try:
+            from ui.setup_wizard import SetupWorker
+        except ImportError as exc:
+            self.skipTest(f"PyQt6 is not installed: {exc}")
         
         self.assertTrue(hasattr(SetupWorker, 'run'))
     
@@ -200,6 +206,14 @@ class TestNoFeatureLoss(unittest.TestCase):
         for imp in required_imports:
             self.assertIn(imp, content, f"Missing import: {imp}")
 
+    def test_workshop_browser_download_completion_api_exists(self):
+        """WorkshopBrowser should expose the API MainWindow calls after downloads complete."""
+        with open("ui/workshop_browser.py", 'r') as f:
+            content = f.read()
+
+        self.assertIn("self._queue_lock", content)
+        self.assertIn("def refresh_downloaded_ids", content)
+        self.assertIn("def clear_completed", content)
 
 class TestExpandedDetectionPaths(unittest.TestCase):
     """Test that new detection paths are covered."""

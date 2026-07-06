@@ -3,6 +3,7 @@ Regression tests for v0.2.5 - Game detection and fullscreen.
 """
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 class TestLinuxStandaloneDetection(unittest.TestCase):
     """Test Linux standalone (GOG/manual) detection."""
     
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux standalone detection runs only on Linux")
     def test_detects_standalone_in_home(self):
         """Should detect RimWorld in ~/RimWorld/ with nested structure."""
         from game_detector import GameDetector, InstallationType

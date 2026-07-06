@@ -4,7 +4,7 @@ RimModManager
 A universal mod manager for RimWorld supporting all platforms.
 
 Author: RimWorld Linux Community
-License: MIT
+License: GPL-3.0
 """
 
 __version__ = "0.5.3"
@@ -93,6 +93,42 @@ def setup_environment():
             elif os.environ.get("DESKTOP_SESSION", "").lower() in ("gnome", "ubuntu"):
                 os.environ["QT_QPA_PLATFORMTHEME"] = "gnome"
 
+def _acquire_instance_lock(lock_file: Path):
+    """Acquire a cross-platform single-instance lock."""
+    lock_fd = open(lock_file, 'a+', encoding='utf-8')
+    try:
+        lock_fd.seek(0)
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            import msvcrt
+            msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        lock_fd.seek(0)
+        lock_fd.truncate()
+        lock_fd.write(str(os.getpid()))
+        lock_fd.flush()
+        return lock_fd
+    except (IOError, OSError):
+        lock_fd.close()
+        return None
+
+
+def _release_instance_lock(lock_fd, lock_file: Path) -> None:
+    """Release a lock returned by _acquire_instance_lock."""
+    try:
+        lock_fd.seek(0)
+        if sys.platform.startswith('win') or sys.platform in ('cygwin', 'msys'):
+            import msvcrt
+            msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+        lock_file.unlink(missing_ok=True)
+    except (IOError, OSError):
+        pass
 
 def main():
     """Main application entry point."""
@@ -110,15 +146,13 @@ def main():
     logger = setup_logging(config.config_dir, debug="--debug" in sys.argv)
     logger.info("RimModManager starting...")
     
+    # Import after dependency check, before any GUI fallback dialogs.
+    from PyQt6.QtWidgets import QApplication
+
     # Single-instance lock
-    import fcntl
     lock_file = config.config_dir / ".instance.lock"
-    try:
-        lock_fd = open(lock_file, 'w')
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        lock_fd.write(str(os.getpid()))
-        lock_fd.flush()
-    except (IOError, OSError):
+    lock_fd = _acquire_instance_lock(lock_file)
+    if lock_fd is None:
         logger.warning("Another instance is already running. Exiting.")
         from PyQt6.QtWidgets import QMessageBox
         app_check = QApplication.instance()
@@ -128,7 +162,6 @@ def main():
         return 1
     
     # Import after dependency check
-    from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QPalette, QColor, QIcon
     
@@ -213,12 +246,7 @@ def main():
     # Cleanup lock file on exit
     import atexit
     def _cleanup_lock():
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            lock_fd.close()
-            lock_file.unlink(missing_ok=True)
-        except (IOError, OSError):
-            pass
+        _release_instance_lock(lock_fd, lock_file)
     atexit.register(_cleanup_lock)
     
     # Run the application
