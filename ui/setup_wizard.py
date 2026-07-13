@@ -79,6 +79,8 @@ class SetupWorker(QThread):
             self._install_steamcmd_linux()
         elif platform == 'darwin':
             self._install_steamcmd_macos()
+        elif platform.startswith('win'):
+            self._install_steamcmd_windows()
         else:
             self.finished.emit(False, "Auto-install not supported on this platform")
     
@@ -138,6 +140,37 @@ class SetupWorker(QThread):
         except Exception as e:
             self.finished.emit(False, f"Manual install failed: {e}")
     
+    def _install_steamcmd_windows(self):
+        """Install SteamCMD on Windows via direct download."""
+        import urllib.request
+        import zipfile
+
+        self.progress.emit(20, "Downloading SteamCMD...")
+        try:
+            steamcmd_dir = Path.home() / "steamcmd"
+            steamcmd_dir.mkdir(exist_ok=True)
+
+            zip_path = steamcmd_dir / "steamcmd.zip"
+            self.progress.emit(40, "Downloading from Steam CDN...")
+            urllib.request.urlretrieve(
+                "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip",
+                zip_path
+            )
+
+            self.progress.emit(70, "Extracting...")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(path=steamcmd_dir)
+            zip_path.unlink()
+
+            exe = steamcmd_dir / "steamcmd.exe"
+            if exe.exists():
+                self.progress.emit(100, f"SteamCMD installed to {steamcmd_dir}")
+                self.finished.emit(True, str(exe))
+            else:
+                self.finished.emit(False, "steamcmd.exe not found after extraction")
+        except Exception as e:
+            self.finished.emit(False, f"Windows install failed: {e}")
+
     def _install_steamcmd_macos(self):
         """Install SteamCMD on macOS."""
         self.progress.emit(20, "Trying Homebrew...")
