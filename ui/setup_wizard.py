@@ -168,17 +168,26 @@ class SetupWorker(QThread):
                 return
 
             self.progress.emit(85, "Running first-time update (steamcmd +quit)...")
-            proc = subprocess.run(
-                [str(exe), "+quit"],
-                capture_output=True, text=True, timeout=120
-            )
-            if proc.returncode == 0:
-                self.progress.emit(100, f"SteamCMD ready at {exe}")
-                self.finished.emit(True, str(exe))
-            else:
-                self.finished.emit(False, f"SteamCMD update failed (exit code {proc.returncode})")
-        except subprocess.TimeoutExpired:
-            self.finished.emit(False, "SteamCMD update timed out (check internet)")
+            last_error = ""
+            for attempt in range(1, 3):
+                try:
+                    proc = subprocess.run(
+                        [str(exe), "+app_info_update", "1", "+quit"],
+                        capture_output=True, text=True, timeout=120,
+                        cwd=str(steamcmd_dir)
+                    )
+                    if proc.returncode == 0:
+                        self.progress.emit(100, f"SteamCMD ready at {exe}")
+                        self.finished.emit(True, str(exe))
+                        return
+                    last_error = f"exit code {proc.returncode}"
+                    if attempt == 1:
+                        self.progress.emit(85, f"Retrying ({last_error})...")
+                except subprocess.TimeoutExpired:
+                    last_error = "timed out"
+                    if attempt == 1:
+                        self.progress.emit(85, f"Retrying ({last_error})...")
+            self.finished.emit(False, f"SteamCMD update failed ({last_error}) after 2 attempts")
         except Exception as e:
             self.finished.emit(False, f"Windows install failed: {e}")
 
