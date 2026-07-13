@@ -5,6 +5,26 @@ All notable changes to RimModManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-13 - Cross-Platform Stability & Installer
+
+### Added
+- **Windows Installer**: New Inno Setup-based installer (`RimModManager-*-Setup.exe`) with desktop shortcuts, uninstaller, and admin support.
+- **Windows Icon**: Auto-generated `.ico` from SVG during build.
+- **macOS .app Bundle**: `build.py` now produces a proper `.app` bundle with `--onedir` instead of fragile `--onefile`.
+- **macOS DMG**: GitHub Actions now packages `.dmg` for release builds.
+- **macOS Bundle ID**: Added `--osx-bundle-identifier=com.rimmodmanager.app`.
+
+### Fixed
+- **Critical Windows Crash**: Single-instance lock no longer imports Unix-only `fcntl` unconditionally (PR #12).
+- **Test Encoding**: All file reads now use `encoding='utf-8'` — fixes `UnicodeDecodeError` on Windows with `cp1252` (PR #14).
+- **macOS Build**: Removed `--strip` flag (corrupts Qt frameworks on macOS).
+- **Cross-Platform Imports**: Removed unused `platform` imports from `config_handler.py` and `game_detector.py`.
+
+### Changed
+- **README**: Updated download table with installer + macOS .app info.
+- **ROADMAP**: Marked installer pipeline and encoding fixes as completed.
+- **Code Cleanup**: Moved `memory_experiment.py` to `scripts/`, added `opencode.json` to `.gitignore`.
+
 ## [0.5.3] - 2026-05-18 - Automated Builds
 
 ### Added

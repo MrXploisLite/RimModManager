@@ -56,7 +56,7 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 
 ## 📥 Download
 
-**[⬇️ Download Latest Release (v0.5.3)](https://github.com/MrXploisLite/RimModManager/releases/tag/v0.5.3)**
+**[⬇️ Download Latest Release (v0.6.0)](https://github.com/MrXploisLite/RimModManager/releases/tag/v0.6.0)**
 
 | Platform | File | Notes |
 |----------|------|-------|
