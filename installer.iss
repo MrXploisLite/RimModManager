@@ -3,7 +3,7 @@
 ; Requires: PyInstaller .exe in dist/RimModManager-Windows-x64.exe
 
 #define MyAppName "RimModManager"
-#define MyAppVersion "0.5.3"
+#define MyAppVersion "0.6.0"
 #define MyAppPublisher "MrXploisLite"
 #define MyAppURL "https://github.com/MrXploisLite/RimModManager"
 #define MyAppExeName "RimModManager.exe"

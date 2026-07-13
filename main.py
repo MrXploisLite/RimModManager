@@ -7,7 +7,7 @@ Author: RimWorld Linux Community
 License: GPL-3.0
 """
 
-__version__ = "0.5.3"
+__version__ = "0.6.0"
 
 import sys
 import os
