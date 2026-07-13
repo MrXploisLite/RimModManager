@@ -205,7 +205,7 @@ class TestNoFeatureLoss(unittest.TestCase):
 
     def test_workshop_browser_download_completion_api_exists(self):
         """WorkshopBrowser should expose the API MainWindow calls after downloads complete."""
-        with open("ui/workshop_browser.py", 'r') as f:
+        with open("ui/workshop_browser.py", 'r', encoding='utf-8') as f:
             content = f.read()
 
         self.assertIn("self._queue_lock", content)
