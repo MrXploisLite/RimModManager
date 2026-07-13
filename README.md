@@ -61,8 +61,9 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 | Platform | File | Notes |
 |----------|------|-------|
 | 🐧 Linux | `RimModManager-Linux-x64` | `chmod +x && ./RimModManager-Linux-x64` |
-| 🪟 Windows | `RimModManager-Windows-x64.exe` | Double-click to run |
-| 🍎 macOS | `RimModManager-macOS-x64` | `chmod +x && ./RimModManager-macOS-x64` |
+| 🪟 Windows | `RimModManager-Windows-x64.exe` | Portable — double-click to run |
+| 🪟 Windows | `RimModManager-*-Setup.exe` | Installer — one-click setup |
+| 🍎 macOS | `RimModManager-macOS-x64.app` | `.app` bundle — drag to Applications |
 
 > Binaries are built automatically via GitHub Actions on each release.
 
@@ -86,6 +87,11 @@ python main.py
 pip install PyQt6 PyInstaller
 python build.py
 ```
+
+Output:
+- **Linux**: `dist/RimModManager-Linux-x64`
+- **Windows**: `dist/RimModManager-Windows-x64.exe` (to build installer: `iscc installer.iss`)
+- **macOS**: `dist/RimModManager-macOS-x64.app`
 
 ---
 
@@ -184,27 +190,38 @@ python main.py
 <details>
 <summary><b>📦 Windows Installation</b></summary>
 
+**Option 1 — Installer (recommended):**
+1. Download `RimModManager-*-Setup.exe` from Releases
+2. Double-click and follow the wizard
+3. Launch from Start Menu or Desktop shortcut
+
+**Option 2 — Portable:**
+1. Download `RimModManager-Windows-x64.exe`
+2. Double-click to run
+
+**Option 3 — From source:**
 ```powershell
-# Install Python from https://python.org
 python -m pip install PyQt6
-# Optional for embedded Workshop browser:
-# python -m pip install PyQt6-WebEngine
+python main.py
 
 # SteamCMD (for Workshop downloads)
-# Option 1: Download from https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
-# Option 2: choco install steamcmd
+# choco install steamcmd
 ```
 </details>
 
 <details>
 <summary><b>🍎 macOS Installation</b></summary>
 
-```bash
-python -m pip install PyQt6
-# Optional for embedded Workshop browser:
-# python -m pip install PyQt6-WebEngine
-brew install steamcmd
-```
+1. Download `RimModManager-macOS-x64.app` from Releases
+2. Drag to Applications folder
+3. Right-click → Open (first launch only, Apple Gatekeeper)
+
+> **From source:**
+> ```bash
+> python -m pip install PyQt6
+> python main.py
+> brew install steamcmd
+> ```
 </details>
 
 <details>
