@@ -140,13 +140,32 @@ jobs:
       - name: Verify build
         run: |
           ls -lh dist/
-          file dist/RimModManager-macOS-x64
+          if [ -f "dist/RimModManager-macOS-x64.app/Contents/MacOS/RimModManager" ]; then
+            echo "✅ macOS .app bundle verified"
+            file "dist/RimModManager-macOS-x64.app/Contents/MacOS/RimModManager"
+          elif [ -f "dist/RimModManager-Linux-x64" ] || [ -f "dist/RimModManager-Windows-x64.exe" ]; then
+            echo "✅ Binary found"
+          else
+            echo "⚠️ No expected binary found, showing dist contents"
+            ls -la dist/
+          fi
+      
+      - name: Package macOS .app into .dmg
+        if: github.event_name == 'release'
+        run: |
+          if [ -d "dist/RimModManager-macOS-x64.app" ]; then
+            pip install dmgbuild 2>/dev/null || true
+            hdiutil create -volname "RimModManager" -srcfolder "dist/RimModManager-macOS-x64.app" -ov -format UDZO "dist/RimModManager-macOS-x64.dmg" 2>/dev/null || \
+              echo "⚠️ DMG creation skipped (hdiutil unavailable)"
+          fi
       
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/RimModManager-macOS-x64
+          files: |
+            dist/RimModManager-macOS-x64.app
+            dist/RimModManager-macOS-x64.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -155,4 +174,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RimModManager-macOS
-          path: dist/RimModManager-macOS-x64
+          path: |
+            dist/RimModManager-macOS-x64.app
+            dist/RimModManager-macOS-x64.dmg

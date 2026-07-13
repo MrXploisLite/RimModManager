@@ -28,17 +28,28 @@ def build():
         if Path(d).exists():
             shutil.rmtree(d)
     
-    # Core PyInstaller arguments
+    # Core PyInstaller arguments - platform specific
     args = [
         'main.py',
         '--name=RimModManager',
         '--noconfirm',
-        '--onefile',
-        '--windowed',
         '--clean',
-        '--strip',
         '--optimize=2',
     ]
+    
+    if platform == 'darwin':
+        # macOS: use --onedir for stable .app bundle (--onefile breaks signing)
+        # and avoid --strip which corrupts Qt frameworks on macOS
+        args += [
+            '--windowed',
+            '--onedir',
+            '--osx-bundle-identifier=com.rimmodmanager.app',
+        ]
+        # Optional: universal2 for Apple Silicon + Intel
+        # args += ['--target-arch', 'universal2']
+    else:
+        # Linux/Windows: single-file executable
+        args += ['--onefile', '--windowed', '--strip']
     
     # Icon - platform specific
     icon_path = Path('resources/icon.svg')
@@ -47,8 +58,14 @@ def build():
             # Windows needs .ico - skip if not available
             pass
         elif platform == 'darwin':
-            # macOS needs .icns - skip if not available
-            pass
+            # macOS needs .icns - check common locations
+            icns_paths = [
+                Path('resources/icon.icns'),
+                Path('resources/RimModManager.icns'),
+            ]
+            found_icns = next((p for p in icns_paths if p.exists()), None)
+            if found_icns:
+                args.append(f'--icon={found_icns}')
         else:
             args.append('--icon=resources/icon.svg')
     
@@ -99,33 +116,40 @@ def build():
         PyInstaller.__main__.run(args)
         print("\n✅ Build complete!")
         
-        # Check size
-        if platform == 'windows':
-            dist_path = Path("dist/RimModManager.exe")
-        else:
-            dist_path = Path("dist/RimModManager")
-        
-        if dist_path.exists():
-            size_mb = dist_path.stat().st_size / (1024 * 1024)
-            print(f"📄 Output size: {size_mb:.2f} MB")
-            
-            # Rename for platform if needed
-            if platform == 'windows':
-                target_name = "RimModManager-Windows-x64.exe"
-            elif platform == 'darwin':
-                target_name = "RimModManager-macOS-x64"
+        # Check output
+        if platform == 'darwin':
+            # macOS: .app bundle in dist/
+            dist_path = Path("dist/RimModManager.app")
+            if dist_path.exists():
+                size_mb = sum(f.stat().st_size for f in dist_path.rglob('*') if f.is_file()) / (1024 * 1024)
+                target_name = "RimModManager-macOS-x64.app"
+                target_path = Path("dist") / target_name
+                if not target_path.exists():
+                    dist_path.rename(target_path)
+                print(f"📄 Output: {target_name} ({size_mb:.1f} MB)")
             else:
+                print("⚠️ macOS .app not found in dist/")
+                for f in Path("dist").iterdir():
+                    print(f"  {f.name}")
+        else:
+            if platform == 'windows':
+                dist_path = Path("dist/RimModManager.exe")
+                target_name = "RimModManager-Windows-x64.exe"
+            else:
+                dist_path = Path("dist/RimModManager")
                 target_name = "RimModManager-Linux-x64"
             
-            target_path = Path("dist") / target_name
-            if dist_path.name != target_name:
-                dist_path.rename(target_path)
-                print(f"📦 Renamed to: {target_name}")
-        else:
-            print(f"⚠️ Output not found at {dist_path}")
-            print("Contents of dist/:")
-            for f in Path("dist").iterdir():
-                print(f"  {f.name} ({f.stat().st_size / (1024*1024):.2f} MB)")
+            if dist_path.exists():
+                size_mb = dist_path.stat().st_size / (1024 * 1024)
+                target_path = Path("dist") / target_name
+                if dist_path.name != target_name:
+                    dist_path.rename(target_path)
+                print(f"📄 Output: {target_name} ({size_mb:.2f} MB)")
+            else:
+                print(f"⚠️ Output not found at {dist_path}")
+                print("Contents of dist/:")
+                for f in Path("dist").iterdir():
+                    print(f"  {f.name} ({f.stat().st_size / (1024*1024):.2f} MB)")
                 
     except (RuntimeError, OSError, ImportError) as e:
         print(f"\n❌ Build failed: {e}")
