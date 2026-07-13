@@ -52,6 +52,8 @@ Thumbs.db
 
 # Project specific
 *.log
+scripts/build_checker.ps1
+scripts/build_checker.ps1
 rimmodmanager_cache.json
 .rimmodmanager_cache.json
 
