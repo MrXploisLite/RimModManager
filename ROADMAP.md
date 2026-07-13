@@ -129,6 +129,7 @@
 ### Platform Goals
 - [ ] Flatpak packaging for Linux
 - [ ] Homebrew tap for macOS
+- [x] Inno Setup installer for Windows
 - [ ] Winget package for Windows
 - [ ] Better Steam Deck controller support
 
@@ -138,9 +139,9 @@
 - [ ] Migrate from urllib to aiohttp for async network requests
 - [ ] Add type hints to all public APIs
 - [ ] Increase test coverage to 80%+
+- [x] Fix Windows codepage issues in tests (UTF-8 encoding)
 - [ ] Add integration tests for full workflows
-- [ ] Document all public APIs with docstrings
 
 ---
 
-*Last Updated: 2026-05-18*
+*Last Updated: 2026-07-13*
