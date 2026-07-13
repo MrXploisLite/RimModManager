@@ -163,11 +163,22 @@ class SetupWorker(QThread):
             zip_path.unlink()
 
             exe = steamcmd_dir / "steamcmd.exe"
-            if exe.exists():
-                self.progress.emit(100, f"SteamCMD installed to {steamcmd_dir}")
+            if not exe.exists():
+                self.finished.emit(False, "steamcmd.exe not found after extraction")
+                return
+
+            self.progress.emit(85, "Running first-time update (steamcmd +quit)...")
+            proc = subprocess.run(
+                [str(exe), "+quit"],
+                capture_output=True, text=True, timeout=120
+            )
+            if proc.returncode == 0:
+                self.progress.emit(100, f"SteamCMD ready at {exe}")
                 self.finished.emit(True, str(exe))
             else:
-                self.finished.emit(False, "steamcmd.exe not found after extraction")
+                self.finished.emit(False, f"SteamCMD update failed (exit code {proc.returncode})")
+        except subprocess.TimeoutExpired:
+            self.finished.emit(False, "SteamCMD update timed out (check internet)")
         except Exception as e:
             self.finished.emit(False, f"Windows install failed: {e}")
 
