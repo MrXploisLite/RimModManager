@@ -65,7 +65,7 @@ Managing 200+ RimWorld mods shouldn't be painful. RimModManager is a **free, ope
 | 🪟 Windows | `RimModManager-*-Setup.exe` | Installer — one-click setup |
 | 🍎 macOS | `RimModManager-macOS-x64.app` | `.app` bundle — drag to Applications |
 
-> Binaries are built automatically via GitHub Actions on each release.
+> Build manually from source (see below).
 
 ### Quick Start (Linux)
 ```bash
