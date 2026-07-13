@@ -19,6 +19,29 @@ def get_platform():
         return 'linux'
 
 
+def _convert_svg_to_ico(svg_path: Path, ico_path: Path):
+    """Convert SVG to Windows ICO using PyQt6."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtGui import QPixmap, QPainter
+        from PyQt6.QtSvg import QSvgRenderer
+        from PyQt6.QtCore import QByteArray
+        import sys
+
+        app = QApplication(sys.argv)
+        svg_data = svg_path.read_bytes()
+        renderer = QSvgRenderer(QByteArray(svg_data))
+        pixmap = QPixmap(256, 256)
+        pixmap.fill()
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        pixmap.save(str(ico_path), 'ICO')
+        print(f"✅ Generated {ico_path.name}")
+    except ImportError:
+        print("⚠️ PyQt6 not available, skipping icon conversion")
+
+
 def build():
     platform = get_platform()
     print(f"🚀 Starting build for {platform}...")
@@ -41,16 +64,24 @@ def build():
     ]
     
     # Icon - platform specific
-    icon_path = Path('resources/icon.svg')
-    if icon_path.exists():
+    icon_svg = Path('resources/icon.svg')
+    if icon_svg.exists():
         if platform == 'windows':
-            # Windows needs .ico - skip if not available
-            pass
+            ico_path = Path('resources/icon.ico')
+            if not ico_path.exists():
+                _convert_svg_to_ico(icon_svg, ico_path)
+            if ico_path.exists():
+                args.append(f'--icon={ico_path}')
         elif platform == 'darwin':
-            # macOS needs .icns - skip if not available
-            pass
+            icns_paths = [
+                Path('resources/icon.icns'),
+                Path('resources/RimModManager.icns'),
+            ]
+            found_icns = next((p for p in icns_paths if p.exists()), None)
+            if found_icns:
+                args.append(f'--icon={found_icns}')
         else:
-            args.append('--icon=resources/icon.svg')
+            args.append(f'--icon={icon_svg}')
     
     # Exclude heavy/unused libraries
     excludes = [

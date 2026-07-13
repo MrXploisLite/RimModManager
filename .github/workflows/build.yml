@@ -101,11 +101,19 @@ jobs:
           dir dist
           Get-Item dist/RimModManager-Windows-x64.exe | Format-List
       
+      - name: Build installer
+        run: |
+          choco install innosetup --no-progress --limit-output 2>$null
+          iscc installer.iss
+          if (Test-Path "dist\RimModManager-*-Setup.exe") { echo "✅ Installer built" }
+      
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/RimModManager-Windows-x64.exe
+          files: |
+            dist/RimModManager-Windows-x64.exe
+            dist/RimModManager-*-Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
@@ -114,7 +122,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RimModManager-Windows
-          path: dist/RimModManager-Windows-x64.exe
+          path: |
+            dist/RimModManager-Windows-x64.exe
+            dist/RimModManager-*-Setup.exe
 
   build-macos:
     name: Build macOS
